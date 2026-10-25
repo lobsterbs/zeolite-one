@@ -26,7 +26,7 @@ async function get(name) {
   cache[name] = buf;
   return buf;
 }
-function sha(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
+function hash(buf, alg) { return crypto.createHash(alg).update(buf).digest('hex'); }
 const server = http.createServer(async (req, res) => {
   try {
     const p = new URL(req.url, 'http://x').pathname;
@@ -35,7 +35,7 @@ const server = http.createServer(async (req, res) => {
     if (p === '/meta') {
       const meta = {};
       for (const k of Object.keys(FILES)) {
-        try { const b = await get(k); meta[k] = { bytes: b.length, sha256: sha(b), textChunks: Math.ceil(b.length / CHUNK), b64Len: Math.ceil(b.length / 3) * 4 }; }
+        try { const b = await get(k); meta[k] = { bytes: b.length, sha256: hash(b, 'sha256'), md5: hash(b, 'md5'), textChunks: Math.ceil(b.length / CHUNK), b64Len: Math.ceil(b.length / 3) * 4 }; }
         catch (e) { meta[k] = { error: String(e && e.message || e) }; }
       }
       return send(JSON.stringify(meta, null, 2), 'application/json');

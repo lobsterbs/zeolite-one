@@ -1,11 +1,13 @@
 const http = require('http');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const FILES = {
   acorn: 'https://cdn.jsdelivr.net/npm/acorn@8.14.0/dist/acorn.min.js',
   walk: 'https://cdn.jsdelivr.net/npm/acorn-walk@8.3.4/dist/walk.min.js',
-  full: 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7.5/libcurl_full.js',
+  curl: 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7.5/libcurl.js',
   tokens: 'https://cdn.jsdelivr.net/npm/@materialwebunofficial/md3e-web@1.0.14/dist/tokens.min.css',
   md3e: 'https://cdn.jsdelivr.net/npm/@materialwebunofficial/md3e-web@1.0.14/dist/md3-expressive.esm.js',
+  wasm: 'https://cdn.jsdelivr.net/npm/libcurl.js@0.7.5/libcurl.wasm',
   sora400: 'https://cdn.jsdelivr.net/npm/@fontsource/sora@5/files/sora-latin-400-normal.woff2',
   sora500: 'https://cdn.jsdelivr.net/npm/@fontsource/sora@5/files/sora-latin-500-normal.woff2',
   sora600: 'https://cdn.jsdelivr.net/npm/@fontsource/sora@5/files/sora-latin-600-normal.woff2',
@@ -14,6 +16,7 @@ const FILES = {
   jbm400: 'https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/files/jetbrains-mono-latin-400-normal.woff2',
   jbm500: 'https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/files/jetbrains-mono-latin-500-normal.woff2'
 };
+const CHUNK = 700000;
 const cache = {};
 async function get(name) {
   if (cache[name]) return cache[name];
@@ -25,13 +28,20 @@ async function get(name) {
   cache[name] = buf;
   return buf;
 }
+const gzcache = {};
+async function getGz(name) {
+  if (gzcache[name]) return gzcache[name];
+  const buf = await get(name);
+  const gz = zlib.gzipSync(buf, { level: 9 });
+  gzcache[name] = gz;
+  return gz;
+}
 function hash(buf, alg) { return crypto.createHash(alg).update(buf).digest('hex'); }
 const server = http.createServer(async (req, res) => {
   try {
-    const u = new URL(req.url, 'http://x');
-    const p = u.pathname;
+    const p = new URL(req.url, 'http://x').pathname;
     const send = (body, type) => { res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }); res.end(body); };
-    if (p === '/') return send('endpoints: /meta /md5/<key>/<start>/<len> /b64w/<key>/<start>/<len> /ghmd5/<owner>/<repo>/<ref>/<path>', 'text/plain; charset=utf-8');
+    if (p === '/') return send('endpoints: /meta /md5/<key>/<start>/<len> /b64w/<key>/<start>/<len> /gzb64/<key>/<n> /gzinfo/<key> /ghmd5/<owner>/<repo>/<ref>/<path>', 'text/plain; charset=utf-8');
     if (p === '/meta') {
       const meta = {};
       for (const k of Object.keys(FILES)) {
@@ -55,6 +65,16 @@ const server = http.createServer(async (req, res) => {
       if (s < 0 || s >= b.length || len < 0) throw new Error('bad range');
       const b64 = b.subarray(s, s + len).toString('base64').replace(/(.{76})/g, '$1\n') + '\n';
       return send(b64, 'text/plain; charset=utf-8');
+    }
+    if ((m = p.match(/^\/gzinfo\/([a-z0-9]+)$/))) {
+      const gz = await getGz(m[1]);
+      return send(JSON.stringify({ gzBytes: gz.length, b64Len: gz.toString('base64').length, chunks: Math.ceil(gz.toString('base64').length / CHUNK), gzMd5: hash(gz, 'md5') }), 'application/json');
+    }
+    if ((m = p.match(/^\/gzb64\/([a-z0-9]+)\/(\d+)$/))) {
+      const gz = await getGz(m[1]);
+      const s = gz.toString('base64');
+      const i = Number(m[2]);
+      return send(s.slice(i * CHUNK, (i + 1) * CHUNK), 'text/plain; charset=utf-8');
     }
     if ((m = p.match(/^\/ghmd5\/([^/]+)\/([^/]+)\/([^/]+)(?:\/(.*))?$/))) {
       const owner = decodeURIComponent(m[1]);

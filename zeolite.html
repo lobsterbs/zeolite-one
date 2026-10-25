@@ -538,7 +538,7 @@
     return _reqSend(url, opts, body, bodyB64);
   }
   function _reqSend(url, opts, body, bodyB64) {
-    return callParent('q', { url: url, opts: { method: opts.method, headers: opts.headers, body: body, bodyB64: bodyB64 } })
+    return callParent('q', { url: url, opts: { method: opts.method, headers: opts.headers, body: body, bodyB64: bodyB64, cacheKey: opts.cacheKey } })
       .then(function (r) {
         if (r && r.e) throw new Error(r.e);
         return r;
@@ -636,21 +636,23 @@
       return new Promise(function (rs, rj) {
         var i = ++rid;
         var abortCtl = null;
+        var nb = false; /* 204/205/304 forbid a body: Response ctor throws otherwise */
         streamHandlers.set(i, {
           onstart: function (status, hdrs, finalUrl) {
             var hmap = {};
             Object.keys(hdrs || {}).forEach(function (k) { hmap[k] = hdrs[k]; });
+            nb = status === 204 || status === 205 || status === 304;
             var stream = new ReadableStream({
               start: function (ctl) { abortCtl = ctl; },
               cancel: function () { post({ t: 'strAbort', i: i }); }
             });
-            var resp = new OrigResponse(stream, {
+            var resp = new OrigResponse(nb ? null : stream, {
               status: status, headers: new Headers(hmap)
             });
             try { Object.defineProperty(resp, 'url', { value: finalUrl || url }); } catch (e) {}
             rs(resp);
           },
-          ondata: function (arr) { if (abortCtl) { try { abortCtl.enqueue(arr); } catch (e) {} } },
+          ondata: function (arr) { if (abortCtl && !nb) { try { abortCtl.enqueue(arr); } catch (e) {} } },
           onend: function () { if (abortCtl) { try { abortCtl.close(); } catch (e) {} } streamHandlers.delete(i); },
           onerror: function (msg) {
             if (abortCtl) { try { abortCtl.error(new TypeError(msg || 'Failed to fetch')); } catch (e) {} }
@@ -1026,7 +1028,7 @@
   function fetchBlob(url) {
     if (fetchBlobCache.has(url)) return fetchBlobCache.get(url);
     if (inflightMedia.has(url)) return inflightMedia.get(url);
-    var p = req(url).then(function (r) {
+    var p = req(url, { cacheKey: 'img:' + url }).then(function (r) {
       if (!r || !r.d) return null;
       var mime = (r.m || 'application/octet-stream').split(';')[0];
       return URL.createObjectURL(new Blob([B64.decode(r.d)], { type: mime }));
@@ -1156,6 +1158,16 @@
     };
   })();
 
+  /* hydration frameworks clone nodes into the DOM without firing any setter hook: neutralize raw media srcs so the promote pipeline picks them up */
+  function neutralizeEl(el2) {
+    if (!/^(img|video|audio|source|embed|object)$/i.test(el2.tagName)) return;
+    ['src', 'poster'].forEach(function (attr) {
+      var v = el2.getAttribute(attr);
+      if (v && !/^(data:|blob:|#)/i.test(v)) { el2.removeAttribute(attr); el2.setAttribute('data-zl-' + attr, v); }
+    });
+    var ss2 = el2.getAttribute('srcset');
+    if (ss2 && !/^(data:|blob:)/i.test(ss2)) { el2.removeAttribute('srcset'); el2.setAttribute('data-zl-srcset', ss2); }
+  }
   /* mutation observer: promote parser-neutralized and JS-inserted media */
   var mo = new MutationObserver(function (muts) {
     for (var i = 0; i < muts.length; i++) {
@@ -1164,7 +1176,11 @@
         m.addedNodes.forEach(function (n) {
           if (n.nodeType !== 1) return;
           if (n.hasAttribute && (n.hasAttribute('data-zl-src') || n.hasAttribute('data-zl-srcset') || n.hasAttribute('data-zl-poster'))) promoteEl(n);
-          if (n.querySelectorAll) n.querySelectorAll('[data-zl-src],[data-zl-srcset],[data-zl-poster],[data-zl-frame]').forEach(function (el2) { if (/^(img|video|audio|source|embed|object)$/i.test(el2.tagName)) promoteEl(el2); else if (el2.tagName === 'IFRAME') proxyFrameEl(el2); });
+          neutralizeEl(n);
+          if (n.querySelectorAll) {
+            n.querySelectorAll('[data-zl-src],[data-zl-srcset],[data-zl-poster],[data-zl-frame]').forEach(function (el2) { if (/^(img|video|audio|source|embed|object)$/i.test(el2.tagName)) promoteEl(el2); else if (el2.tagName === 'IFRAME') proxyFrameEl(el2); });
+            n.querySelectorAll('img,video,audio,source,embed,object').forEach(neutralizeEl);
+          }
           if (n.tagName === 'IFRAME' && n.getAttribute('data-zl-frame')) proxyFrameEl(n);
           if (n.tagName === 'STYLE' && n.textContent && n.textContent.indexOf('url(') !== -1) rewriteStyleEl(n);
         });
@@ -1279,7 +1295,7 @@
   /* dynamic stylesheets: fetch CSS, inline its urls, serve as blob */
   var linkHrefDesc = Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype, 'href');
   function proxyStylesheetLink(el, abs) {
-    req(abs).then(function (r) {
+    req(abs, { cacheKey: 'css:' + abs }).then(function (r) {
       var css = new TextDecoder().decode(B64.decode((r && r.d) || ''));
       return rewriteCss(css, abs, 0);
     }).then(function (css) {
@@ -1313,40 +1329,53 @@
     var im;
     var imports = [];
     while ((im = importRe.exec(css))) imports.push(im);
-    for (var i2 = 0; i2 < imports.length; i2++) {
-      try {
-        var iu = resolve2(imports[i2][1], base);
-        var r = await req(iu);
-        if (r && r.d) {
-          var sub = new TextDecoder().decode(B64.decode(r.d));
-          sub = await rewriteCss(sub, iu, depth + 1);
-          css = css.replace(imports[i2][0], sub);
-        }
-      } catch (e) {}
+    if (imports.length) {
+      /* fetch every @import concurrently, then splice in order */
+      var subs = await Promise.all(imports.map(function (im2) {
+        try {
+          var iu = resolve2(im2[1], base);
+          return req(iu, { cacheKey: 'css:' + iu }).then(function (r) {
+            if (!r || !r.d) return null;
+            var sub = new TextDecoder().decode(B64.decode(r.d));
+            return rewriteCss(sub, iu, depth + 1);
+          }).catch(function () { return null; });
+        } catch (e) { return Promise.resolve(null); }
+      }));
+      for (var i2 = 0; i2 < imports.length; i2++) {
+        if (subs[i2] != null) css = css.replace(imports[i2][0], subs[i2]);
+      }
     }
     var urlRe = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
     var seen = new Set();
     var m2;
-    var result = css;
+    var matches = [];
     while ((m2 = urlRe.exec(css))) {
       if (/^(data:|blob:|#)/i.test(m2[2]) || seen.has(m2[0])) continue;
       seen.add(m2[0]);
-      try {
-        var absUrl = resolve2(m2[2], base);
-        if (shouldSkip(absUrl)) continue;
-        var ext = absUrl.split('?')[0].split('.').pop().toLowerCase();
-        var isFont = /woff2?|ttf|otf|eot/.test(ext);
-        if (isFont) {
-          var fr = await req(absUrl);
-          if (fr && fr.d) {
-            var fm = ext === 'woff2' ? 'font/woff2' : ext === 'woff' ? 'font/woff' : ext === 'ttf' ? 'font/ttf' : 'font/otf';
-            result = result.split(m2[0]).join('url("data:' + fm + ';base64,' + fr.d + '")');
+      matches.push(m2);
+    }
+    var result = css;
+    if (matches.length) {
+      /* fetch every font/image concurrently, then splice in order */
+      var repls = await Promise.all(matches.map(function (m3) {
+        try {
+          var absUrl = resolve2(m3[2], base);
+          if (shouldSkip(absUrl)) return Promise.resolve(null);
+          var ext = absUrl.split('?')[0].split('.').pop().toLowerCase();
+          var isFont = /woff2?|ttf|otf|eot/.test(ext);
+          if (isFont) {
+            return req(absUrl, { cacheKey: 'font:' + absUrl }).then(function (fr) {
+              if (!fr || !fr.d) return null;
+              var fm = ext === 'woff2' ? 'font/woff2' : ext === 'woff' ? 'font/woff' : ext === 'ttf' ? 'font/ttf' : 'font/otf';
+              return 'url("data:' + fm + ';base64,' + fr.d + '")';
+            }).catch(function () { return null; });
           }
-        } else {
-          var bu = await fetchBlob(absUrl);
-          if (bu) result = result.split(m2[0]).join('url("' + bu + '")');
-        }
-      } catch (e) {}
+          return fetchBlob(absUrl).then(function (bu) { return bu ? 'url("' + bu + '")' : null; }).catch(function () { return null; });
+        } catch (e) { return Promise.resolve(null); }
+      }));
+      for (var j = 0; j < matches.length; j++) {
+        if (repls[j] != null) result = result.split(matches[j][0]).join(repls[j]);
+      }
     }
     return result;
   }
@@ -3599,6 +3628,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
   /* ────────────────────────── JS rewriting (acorn, host side) ────────────────────────── */
   function rewriteLocationRefs(src) {
     if (!window.acorn || !src || !src.length || src.length > 4000000) return src;
+    if (src.indexOf('location') === -1) return src;
     var walk = window.acorn.walk || window.walk;
     if (!walk || !walk.full) return src;
     var ast;
@@ -3661,14 +3691,14 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     var cached = esmMeta.get(abs);
     if (cached) {
       imap[abs] = cached.url;
-      for (var i = 0; i < cached.deps.length; i++) await proxyEsmModule(cached.deps[i], imap, depth + 1);
+      await Promise.all(cached.deps.map(function (dep) { return proxyEsmModule(dep, imap, depth + 1).catch(function () {}); }));
       return cached.url;
     }
     if (depth > 8) return null;
     var r = await queueFetch(abs, { priority: 1, dest: 'script', logType: 'js', cacheKey: 'js:' + abs });
     var text = b64ToStr(r.d || '');
     var t = transformModuleSource(text, abs);
-    for (var j = 0; j < t.deps.length; j++) await proxyEsmModule(t.deps[j], imap, depth + 1);
+    await Promise.all(t.deps.map(function (dep) { return proxyEsmModule(dep, imap, depth + 1).catch(function () {}); }));
     var url = JS_DATA + strToB64(t.code);
     imap[abs] = url;
     esmMeta.set(abs, { url: url, deps: t.deps });
@@ -4183,6 +4213,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     }
     return null;
   }
+  function replyTo(win, m) { try { win.postMessage(m, '*'); } catch (e) {} }
   function streamFetch(d, source) {
     var opts = d.opts || {};
     var ctl = new AbortController();
@@ -4201,26 +4232,42 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
         };
         if (opts.bodyB64 && opts.body) o.bodyBytes = b64ToU8(opts.body);
         else if (opts.body) o.body = opts.body;
-        var resp = await rawFetch(d.url, o, ctl.signal);
+        var cur = d.url;
+        var hops = 0;
+        var resp = null;
+        while (true) {
+          resp = await rawFetch(cur, o, ctl.signal);
+          var hmap0 = headerMap(resp.raw_headers || []);
+          var loc = respHeader(hmap0, 'location');
+          if (o.redirect !== 'manual' && (resp.status === 301 || resp.status === 302 || resp.status === 303 || resp.status === 307 || resp.status === 308) && loc && hops < 12) {
+            hops++;
+            var next;
+            try { next = new URL(loc, cur).href; } catch (e) { break; }
+            if (resp.status === 303 || ((resp.status === 301 || resp.status === 302) && o.method === 'POST')) { o.method = 'GET'; o.body = undefined; o.bodyBytes = undefined; }
+            cur = next;
+            continue;
+          }
+          break;
+        }
         var raw = resp.raw_headers || [];
-        cookiesFromResponse(d.url, raw);
+        cookiesFromResponse(cur, raw);
         var hmap = headerMap(raw);
-        source.postMessage({ t: 'strStart', f: d.f, i: d.i, status: resp.status, headers: hmap, finalUrl: d.url });
+        replyTo(source, { t: 'strStart', f: d.f, i: d.i, status: resp.status, headers: hmap, finalUrl: cur });
         if (resp.body && resp.body.getReader) {
           var reader = resp.body.getReader();
           while (true) {
             var chunk = await reader.read();
             if (chunk.done) break;
-            source.postMessage({ t: 'strData', f: d.f, i: d.i, d: u8ToB64(chunk.value) });
+            replyTo(source, { t: 'strData', f: d.f, i: d.i, d: u8ToB64(chunk.value) });
           }
         } else {
           var buf = new Uint8Array(await resp.arrayBuffer());
-          source.postMessage({ t: 'strData', f: d.f, i: d.i, d: u8ToB64(buf) });
+          replyTo(source, { t: 'strData', f: d.f, i: d.i, d: u8ToB64(buf) });
         }
-        source.postMessage({ t: 'strEnd', f: d.f, i: d.i });
-        netLog('fetch', d.url, resp.status, Date.now() - started, 0, resp.status < 400 ? 'ok' : 'err');
+        replyTo(source, { t: 'strEnd', f: d.f, i: d.i });
+        netLog('fetch', cur, resp.status, Date.now() - started, 0, resp.status < 400 ? 'ok' : 'err');
       } catch (err) {
-        source.postMessage({ t: 'strError', f: d.f, i: d.i, error: (err && err.message) || 'network error' });
+        replyTo(source, { t: 'strError', f: d.f, i: d.i, error: (err && err.message) || 'network error' });
         netLog('fetch', d.url, 0, Date.now() - started, 0, 'err');
       } finally {
         strCtls.delete(d.f + ':' + d.i);
@@ -4233,18 +4280,18 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       try {
         var w = new libcurl.CurlWebSocket(d.url, d.protocols || [], {});
         wsServers.set(key, w);
-        w.onopen = function () { source.postMessage({ t: 'ws', f: d.f, i: d.i, a: 'open', protocol: '' }); netLog('ws', d.url, 101, 0, 0, 'ok'); };
+        w.onopen = function () { replyTo(source, { t: 'ws', f: d.f, i: d.i, a: 'open', protocol: '' }); netLog('ws', d.url, 101, 0, 0, 'ok'); };
         w.onmessage = function (data) {
-          if (typeof data === 'string') source.postMessage({ t: 'ws', f: d.f, i: d.i, a: 'message', d: data });
-          else source.postMessage({ t: 'ws', f: d.f, i: d.i, a: 'message', b64: 1, d: u8ToB64(data) });
+          if (typeof data === 'string') replyTo(source, { t: 'ws', f: d.f, i: d.i, a: 'message', d: data });
+          else replyTo(source, { t: 'ws', f: d.f, i: d.i, a: 'message', b64: 1, d: u8ToB64(data) });
         };
-        w.onerror = function () { source.postMessage({ t: 'ws', f: d.f, i: d.i, a: 'error' }); };
+        w.onerror = function () { replyTo(source, { t: 'ws', f: d.f, i: d.i, a: 'error' }); };
         w.onclose = function () {
-          source.postMessage({ t: 'ws', f: d.f, i: d.i, a: 'close', code: 1000, wasClean: true });
+          replyTo(source, { t: 'ws', f: d.f, i: d.i, a: 'close', code: 1000, wasClean: true });
           wsServers.delete(key);
         };
       } catch (e) {
-        source.postMessage({ t: 'ws', f: d.f, i: d.i, a: 'error' });
+        replyTo(source, { t: 'ws', f: d.f, i: d.i, a: 'error' });
       }
     } else if (d.a === 'send') {
       var sw = wsServers.get(key);
@@ -4287,14 +4334,15 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
           method: opts.method || 'GET',
           referrer: tab ? tab.url : undefined,
           redirect: opts.redirect,
-          priority: 2
+          priority: 2,
+          cacheKey: opts.cacheKey
         };
         if (opts.bodyB64 && opts.body) o.bodyBytes = b64ToU8(opts.body);
         else if (opts.body) o.body = opts.body;
         queueFetch(d.url, o).then(function (r) {
-          source.postMessage({ t: 'r', f: d.f, i: d.i, s: r.s, h: r.h, m: r.m, d: r.d });
+          replyTo(source, { t: 'r', f: d.f, i: d.i, s: r.s, h: r.h, m: r.m, d: r.d });
         }).catch(function (err) {
-          source.postMessage({ t: 'r', f: d.f, i: d.i, e: (err && err.message) || 'engine error' });
+          replyTo(source, { t: 'r', f: d.f, i: d.i, e: (err && err.message) || 'engine error' });
         });
         break;
       }
@@ -4309,9 +4357,9 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       case 'qjs':
         queueFetch(d.url, { priority: 1, dest: 'script', logType: 'js', cacheKey: 'js:' + d.url, referrer: tab ? tab.url : undefined }).then(function (r) {
           var code = b64ToStr(r.d || '');
-          source.postMessage({ t: 'r', f: d.f, i: d.i, d: JS_DATA + strToB64(rewriteLocationRefs(code)) });
+          replyTo(source, { t: 'r', f: d.f, i: d.i, d: JS_DATA + strToB64(rewriteLocationRefs(code)) });
         }).catch(function (err) {
-          source.postMessage({ t: 'r', f: d.f, i: d.i, e: (err && err.message) || 'engine error' });
+          replyTo(source, { t: 'r', f: d.f, i: d.i, e: (err && err.message) || 'engine error' });
         });
         break;
       case 'pf':
@@ -4319,9 +4367,9 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
           try {
             var r = await queueFetch(d.url, { priority: 2, dest: 'document', logType: 'pf', timeoutMs: 30000, referrer: tab ? tab.url : undefined });
             var out = await renderDocument(b64ToStr(r.d), r.finalUrl, tab || makeTab('zl://newtab'), 1);
-            source.postMessage({ t: 'r', f: d.f, i: d.i, d: out.html });
+            replyTo(source, { t: 'r', f: d.f, i: d.i, d: out.html });
           } catch (err) {
-            source.postMessage({ t: 'r', f: d.f, i: d.i, e: (err && err.message) || 'engine error' });
+            replyTo(source, { t: 'r', f: d.f, i: d.i, e: (err && err.message) || 'engine error' });
           }
         })();
         break;
@@ -4378,12 +4426,12 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       case 'geo':
         try {
           navigator.geolocation.getCurrentPosition(function (pos) {
-            source.postMessage({ t: 'geoResp', f: d.f, i: d.i, ok: 1, coords: { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy } });
+            replyTo(source, { t: 'geoResp', f: d.f, i: d.i, ok: 1, coords: { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy } });
           }, function (err) {
-            source.postMessage({ t: 'geoResp', f: d.f, i: d.i, ok: 0, code: err.code, message: err.message });
+            replyTo(source, { t: 'geoResp', f: d.f, i: d.i, ok: 0, code: err.code, message: err.message });
           }, { timeout: 10000 });
         } catch (e) {
-          source.postMessage({ t: 'geoResp', f: d.f, i: d.i, ok: 0, code: 1, message: 'unavailable' });
+          replyTo(source, { t: 'geoResp', f: d.f, i: d.i, ok: 0, code: 1, message: 'unavailable' });
         }
         break;
       case 'dl':

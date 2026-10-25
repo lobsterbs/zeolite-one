@@ -9,8 +9,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Roboto:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=block" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@materialwebunofficial/md3e-web@1.0.14/dist/tokens.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@materialwebunofficial/md3e-web@1.0.14/src/icons/material-symbols.css" />
     <script type="module" src="https://cdn.jsdelivr.net/npm/@materialwebunofficial/md3e-web@1.0.14/dist/md3-expressive.esm.js"></script>
     <style>
         /* md3e-web components consume the md-sys tokens below; app type styles are zl-ts so the granular md3e typescale tokens stay intact */
@@ -89,6 +89,14 @@
         }
         button { font-family: inherit; color: inherit; }
 
+        /* full rounded variable font, self-hosted on jsDelivr; declared after the md3e subset face so it wins font matching and every ligature resolves */
+        @font-face {
+            font-family: 'Material Symbols Rounded';
+            font-style: normal;
+            font-weight: 100 700;
+            font-display: block;
+            src: url('https://cdn.jsdelivr.net/npm/material-symbols@0.48.1/material-symbols-rounded.woff2') format('woff2');
+        }
         .msr {
             font-family: 'Material Symbols Rounded';
             font-weight: normal; font-style: normal;
@@ -288,9 +296,7 @@
             *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/acorn@8.14.0/dist/acorn.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/acorn-walk@8.3.4/dist/walk.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/libcurl.js@0.7.4/libcurl_full.js" defer></script>
+    <!-- engine scripts (acorn, acorn-walk, libcurl.js + wasm) are loaded by the app with CDN fallbacks -->
 </head>
 <body>
     <!-- ── Tab strip ─────────────────────────────────────────────── -->
@@ -1643,7 +1649,6 @@
   }
   async function probeRelay(url) {
     libcurl.set_websocket(url);
-    await libcurl.load_wasm();
     var ctl = new AbortController();
     var tm = setTimeout(function () { try { ctl.abort(); } catch (e) {} }, 9000);
     try {
@@ -1705,7 +1710,7 @@
     });
   }
   async function initTransport() {
-    if (!window.libcurl) throw new Error('libcurl.js did not load from the CDN');
+    if (!window.libcurl || !wasmOk) throw new Error('libcurl.js did not load from any CDN');
     var cands = relayCandidates();
     var ordered = [];
     try { ordered = await probeRace(cands, 4000); } catch (e) {}
@@ -2867,7 +2872,7 @@
     $('#setBlock').checked = !!getS('block', true);
     $('#setEngine').value = String(getS('engine', DEF_ENGINE));
     $('#setUA').value = String(getS('ua', DEFAULT_UA));
-    $('#aboutBox').textContent = 'Zeolite single-file edition. Engine: wisp over WebSocket with wasm TLS (libcurl.js 0.7.4, loaded at runtime from jsDelivr, LGPL). AST rewriting: acorn. UI: Material 3 Expressive web components (md3e-web, loaded at runtime from jsDelivr, Apache-2.0). One HTML file, no service worker, no build step.';
+    $('#aboutBox').textContent = 'Zeolite single-file edition. Engine: wisp over WebSocket with wasm TLS (libcurl.js 0.7.4, loaded at runtime from jsDelivr with unpkg fallback, LGPL). AST rewriting: acorn. UI: Material 3 Expressive web components (md3e-web, loaded at runtime from jsDelivr, Apache-2.0). One HTML file, no service worker, no build step.';
     sheetOpen($('#setSheet'));
   }
   function saveSettings() {
@@ -2951,11 +2956,40 @@
   }
 
   /* ────────────────────────── boot ────────────────────────── */
+  var LIB_CDNS = ['https://cdn.jsdelivr.net/npm/', 'https://unpkg.com/'];
+  var wasmOk = false;
+  function loadFirst(urls) {
+    /* inject scripts until one CDN answers; resolves with the URL that worked */
+    return new Promise(function (resolve, reject) {
+      var i = 0;
+      (function next() {
+        if (i >= urls.length) return reject(new Error('no CDN reachable'));
+        var s = document.createElement('script');
+        s.src = urls[i];
+        s.onload = function () { resolve(urls[i]); };
+        s.onerror = function () { s.remove(); i += 1; next(); };
+        document.head.appendChild(s);
+      })();
+    });
+  }
+  (function startEngine() {
+    var acornUrls = LIB_CDNS.map(function (b) { return b + 'acorn@8.14.0/dist/acorn.min.js'; });
+    var walkUrls = LIB_CDNS.map(function (b) { return b + 'acorn-walk@8.3.4/dist/walk.min.js'; });
+    var curlUrls = LIB_CDNS.map(function (b) { return b + 'libcurl.js@0.7.4/libcurl.js'; });
+    var wasmUrls = LIB_CDNS.map(function (b) { return b + 'libcurl.js@0.7.4/libcurl.wasm'; });
+    loadFirst(acornUrls).catch(function () {});
+    loadFirst(walkUrls).catch(function () {});
+    loadFirst(curlUrls).then(function () {
+      var chain = Promise.reject(new Error('wasm not loaded yet'));
+      wasmUrls.forEach(function (u) { chain = chain.catch(function () { return libcurl.load_wasm(u); }); });
+      return chain.then(function () { wasmOk = true; });
+    }).catch(function () {});
+  })();
   function waitForDeps(timeoutMs) {
     return new Promise(function (resolve) {
-      var deadline = Date.now() + (timeoutMs || 20000);
+      var deadline = Date.now() + (timeoutMs || 30000);
       (function poll() {
-        if (window.libcurl && window.acorn) return resolve(true);
+        if (window.libcurl && window.acorn && wasmOk) return resolve(true);
         if (Date.now() > deadline) return resolve(false);
         setTimeout(poll, 200);
       })();
@@ -2969,10 +3003,13 @@
     engineLabel();
     var t = makeTab('zl://newtab');
     activate(t.id);
-    var ok = await waitForDeps(20000);
+    var prog = $('#progress');
+    if (prog) prog.classList.add('on');
+    var ok = await waitForDeps(30000);
     if (!ok) {
-      toast('Engine libraries failed to load (offline? CDN blocked?)');
-      netLog('relay', 'cdn.jsdelivr.net', 0, 0, 0, 'err');
+      if (prog) prog.classList.remove('on');
+      toast('Engine libraries failed to load from every CDN');
+      netLog('relay', 'cdn', 0, 0, 0, 'err');
       return;
     }
     try {
@@ -2982,6 +3019,7 @@
     } catch (e) {
       toast('No relay reachable. Pages will fail until one is.');
     }
+    if (prog) prog.classList.remove('on');
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();

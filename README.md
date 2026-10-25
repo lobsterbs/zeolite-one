@@ -6,16 +6,17 @@ Open zeolite.html in a modern browser. No service worker, no build step, no serv
 
 ## How it works
 
-- Transport: wisp protocol over WebSocket through a relay pool of five public relays ordered by live evidence with anura.pro first, plus a custom endpoint option in settings, carried by libcurl.js with wasm TLS. At startup every relay is probed in parallel with raw wisp v1 CONNECT handshakes over plain WebSockets, with staggered starts and a four second cap; the first winner is then verified end to end through libcurl.
+- Transport: wisp protocol over WebSocket through a relay pool of five public relays ordered by live evidence with anura.pro first, plus a custom endpoint option in settings, carried by libcurl.js with wasm TLS. At startup every relay is probed in parallel with raw wisp v1 CONNECT handshakes over plain WebSockets, with staggered starts and a four second cap; the first winner is then verified end to end through libcurl. Engine scripts load from jsDelivr with unpkg as fallback, and a linear progress indicator shows while the engine and the tunnel come up.
 - Rewriting: acorn parses every script; references to location are rewritten to a virtualized proxy, ES module specifiers are resolved to absolute URLs, and all modules share one merged import map.
 - Rendering: HTML is fetched, parsed, stripped of CSP and integrity constraints, then serialized into a blob loaded in a sandboxed iframe without allow-same-origin. Nested iframes are proxied recursively. CSS url() values, fonts and media are inlined; media above a cap is routed through the tunnel on demand.
-- UI: real Material 3 Expressive web components (md3e-web) themed dark with a verdigris palette: tabs, an omnibox with security and relay chips, a network log drawer, settings, downloads, and a new tab page with clock and favorites.
+- UI: real Material 3 Expressive web components (md3e-web) themed dark with a verdigris palette: tabs, an omnibox with security and relay chips, a network log drawer, settings, downloads, and a new tab page with clock and favorites. Icons render from the full Material Symbols Rounded variable font served from jsDelivr, so icons do not depend on Google Fonts.
 
 ## Runtime dependencies (loaded from jsDelivr, not committed)
 
 - libcurl.js 0.7.4 (LGPL) for transport
 - acorn 8.14.0 and acorn-walk 8.3.4 (MIT) for script rewriting
 - @materialwebunofficial/md3e-web 1.0.14 (Apache-2.0) for the Material 3 Expressive UI
+- material-symbols 0.48.1 rounded variable font (Apache-2.0) for icons
 
 ## Known limits
 

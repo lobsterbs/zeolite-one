@@ -14,7 +14,6 @@ const FILES = {
   jbm400: 'https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/files/jetbrains-mono-latin-400-normal.woff2',
   jbm500: 'https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/files/jetbrains-mono-latin-500-normal.woff2'
 };
-const CHUNK = 700000;
 const cache = {};
 async function get(name) {
   if (cache[name]) return cache[name];
@@ -29,9 +28,10 @@ async function get(name) {
 function hash(buf, alg) { return crypto.createHash(alg).update(buf).digest('hex'); }
 const server = http.createServer(async (req, res) => {
   try {
-    const p = new URL(req.url, 'http://x').pathname;
+    const u = new URL(req.url, 'http://x');
+    const p = u.pathname;
     const send = (body, type) => { res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }); res.end(body); };
-    if (p === '/') return send('endpoints: /meta /md5/<key>/<start>/<len> /b64w/<key>/<start>/<len>', 'text/plain; charset=utf-8');
+    if (p === '/') return send('endpoints: /meta /md5/<key>/<start>/<len> /b64w/<key>/<start>/<len> /ghmd5/<owner>/<repo>/<ref>/<path>', 'text/plain; charset=utf-8');
     if (p === '/meta') {
       const meta = {};
       for (const k of Object.keys(FILES)) {
@@ -55,6 +55,17 @@ const server = http.createServer(async (req, res) => {
       if (s < 0 || s >= b.length || len < 0) throw new Error('bad range');
       const b64 = b.subarray(s, s + len).toString('base64').replace(/(.{76})/g, '$1\n') + '\n';
       return send(b64, 'text/plain; charset=utf-8');
+    }
+    if ((m = p.match(/^\/ghmd5\/([^/]+)\/([^/]+)\/([^/]+)(?:\/(.*))?$/))) {
+      const owner = decodeURIComponent(m[1]);
+      const repo = decodeURIComponent(m[2]);
+      const ref = decodeURIComponent(m[3]);
+      const path = decodeURIComponent(m[4] || '');
+      const ru = 'https://raw.githubusercontent.com/' + owner + '/' + repo + '/' + ref + '/' + path;
+      const rr = await fetch(ru);
+      if (!rr.ok) return send(JSON.stringify({ error: 'github ' + rr.status, url: ru }), 'application/json');
+      const bb = Buffer.from(await rr.arrayBuffer());
+      return send(hash(bb, 'md5') + ' ' + bb.length + ' ' + hash(bb, 'sha256'), 'text/plain; charset=utf-8');
     }
     res.writeHead(404); res.end('nope');
   } catch (e) { res.writeHead(500); res.end(String(e && e.message || e)); }

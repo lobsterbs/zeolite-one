@@ -31,43 +31,30 @@ const server = http.createServer(async (req, res) => {
   try {
     const p = new URL(req.url, 'http://x').pathname;
     const send = (body, type) => { res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }); res.end(body); };
-    if (p === '/') return send('endpoints: /meta /raw/<key> /t/<key>/<n> /b64/<key>/<n> /s/<key>/<start>/<len> /md5/<key>/<start>/<len>', 'text/plain; charset=utf-8');
+    if (p === '/') return send('endpoints: /meta /md5/<key>/<start>/<len> /b64w/<key>/<start>/<len>', 'text/plain; charset=utf-8');
     if (p === '/meta') {
       const meta = {};
       for (const k of Object.keys(FILES)) {
-        try { const b = await get(k); meta[k] = { bytes: b.length, sha256: hash(b, 'sha256'), md5: hash(b, 'md5'), textChunks: Math.ceil(b.length / CHUNK), b64Len: Math.ceil(b.length / 3) * 4 }; }
+        try { const b = await get(k); meta[k] = { bytes: b.length, sha256: hash(b, 'sha256'), md5: hash(b, 'md5') }; }
         catch (e) { meta[k] = { error: String(e && e.message || e) }; }
       }
       return send(JSON.stringify(meta, null, 2), 'application/json');
     }
     let m;
-    if ((m = p.match(/^\/raw\/([a-z0-9]+)$/))) {
-      const b = await get(m[1]);
-      return send(b.toString('utf8'), 'text/plain; charset=utf-8');
-    }
-    if ((m = p.match(/^\/t\/([a-z0-9]+)\/(\d+)$/))) {
-      const b = await get(m[1]);
-      const i = Number(m[2]);
-      return send(b.toString('utf8').slice(i * CHUNK, (i + 1) * CHUNK), 'text/plain; charset=utf-8');
-    }
-    if ((m = p.match(/^\/b64\/([a-z0-9]+)\/(\d+)$/))) {
-      const b = await get(m[1]);
-      const i = Number(m[2]);
-      return send(b.toString('base64').slice(i * CHUNK, (i + 1) * CHUNK), 'text/plain; charset=utf-8');
-    }
-    if ((m = p.match(/^\/s\/([a-z0-9]+)\/(\d+)\/(\d+)$/))) {
-      const b = await get(m[1]);
-      const s = Number(m[2]);
-      const len = Math.min(Number(m[3]), 32000, b.length - s);
-      if (s < 0 || s >= b.length || len < 0) throw new Error('bad range');
-      return send(b.toString('utf8').substring(s, s + len), 'text/plain; charset=utf-8');
-    }
     if ((m = p.match(/^\/md5\/([a-z0-9]+)\/(\d+)\/(\d+)$/))) {
       const b = await get(m[1]);
       const s = Number(m[2]);
       const len = Math.min(Number(m[3]), b.length - s);
       if (s < 0 || s >= b.length || len < 0) throw new Error('bad range');
       return send(hash(b.subarray(s, s + len), 'md5'), 'text/plain; charset=utf-8');
+    }
+    if ((m = p.match(/^\/b64w\/([a-z0-9]+)\/(\d+)\/(\d+)$/))) {
+      const b = await get(m[1]);
+      const s = Number(m[2]);
+      let len = Math.min(Number(m[3]), 700002, b.length - s);
+      if (s < 0 || s >= b.length || len < 0) throw new Error('bad range');
+      const b64 = b.subarray(s, s + len).toString('base64').replace(/(.{76})/g, '$1\n') + '\n';
+      return send(b64, 'text/plain; charset=utf-8');
     }
     res.writeHead(404); res.end('nope');
   } catch (e) { res.writeHead(500); res.end(String(e && e.message || e)); }

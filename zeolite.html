@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -8,11 +8,15 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%235bdac2' d='M32 4 12 22l6 34h28l6-34L32 4zm0 8 12 13-5 25H25l-5-25 12-13z'/%3E%3Cpath fill='%235bdac2' d='M25 46h14l-3 10H28z'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Roboto:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=block" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@materialwebunofficial/md3e-web@1.0.14/dist/tokens.min.css" />
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@materialwebunofficial/md3e-web@1.0.14/dist/md3-expressive.esm.js"></script>
     <style>
-        /* ── Material 3 Expressive tokens (custom verdigris mineral palette, dark) ── */
-        :root {
+        /* md3e-web components consume the md-sys tokens below; app type styles are zl-ts so the granular md3e typescale tokens stay intact */
+        :root[data-theme="dark"] {
+            --md-sys-typescale-font-family: 'Roboto', 'Sora', sans-serif;
+            --md-sys-typescale-font-family-plain: 'Sora', 'Roboto', sans-serif;
             --md-sys-color-primary: #5bdac2;
             --md-sys-color-on-primary: #00382e;
             --md-sys-color-primary-container: #005142;
@@ -49,13 +53,13 @@
             --md-sys-color-warning: #ffce72;
             --md-sys-color-scrim: #000000;
 
-            --md-sys-typescale-display-font: 600 clamp(44px, 6vw, 72px)/1.05 'Sora', sans-serif;
-            --md-sys-typescale-headline-font: 500 28px/1.15 'Sora', sans-serif;
-            --md-sys-typescale-title-font: 500 16px/1.3 'Sora', sans-serif;
-            --md-sys-typescale-body-large-font: 400 15px/1.5 'Sora', sans-serif;
-            --md-sys-typescale-body-medium-font: 400 13px/1.5 'Sora', sans-serif;
-            --md-sys-typescale-body-small-font: 400 11px/1.45 'Sora', sans-serif;
-            --md-sys-typescale-label-font: 600 12px/1.3 'Sora', sans-serif;
+            --zl-ts-display-font: 600 clamp(44px, 6vw, 72px)/1.05 'Sora', sans-serif;
+            --zl-ts-headline-font: 500 28px/1.15 'Sora', sans-serif;
+            --zl-ts-title-font: 500 16px/1.3 'Sora', sans-serif;
+            --zl-ts-body-large-font: 400 15px/1.5 'Sora', sans-serif;
+            --zl-ts-body-medium-font: 400 13px/1.5 'Sora', sans-serif;
+            --zl-ts-body-small-font: 400 11px/1.45 'Sora', sans-serif;
+            --zl-ts-label-font: 600 12px/1.3 'Sora', sans-serif;
             --md-mono-font: 400 12px/1.5 'JetBrains Mono', monospace;
 
             --md-sys-shape-corner-xs: 4px;
@@ -80,7 +84,7 @@
             display: flex; flex-direction: column;
             background: var(--md-sys-color-background);
             color: var(--md-sys-color-on-background);
-            font: var(--md-sys-typescale-body-large-font);
+            font: var(--zl-ts-body-large-font);
             user-select: none;
         }
         button { font-family: inherit; color: inherit; }
@@ -112,7 +116,7 @@
             border: none; border-radius: var(--md-sys-shape-corner-md);
             background: transparent; cursor: pointer;
             color: var(--md-sys-color-on-surface-variant);
-            font: var(--md-sys-typescale-body-medium-font);
+            font: var(--zl-ts-body-medium-font);
             transition: background var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
                 border-radius var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-spatial),
                 flex-grow var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-spring);
@@ -152,54 +156,25 @@
         /* ── toolbar ── */
         #toolbar {
             display: flex; align-items: center; gap: 2px;
-            height: 50px; flex: none; padding: 0 8px;
+            height: 56px; flex: none; padding: 0 8px;
             background: linear-gradient(var(--md-sys-color-surface-container-highest), var(--md-sys-color-surface-container-highest)) padding-box;
         }
-        .tbtn {
-            display: grid; place-items: center;
-            width: 40px; height: 40px; flex: none;
-            border: none; border-radius: 50%;
-            background: transparent; cursor: pointer;
-            color: var(--md-sys-color-on-surface-variant);
-            transition: background var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-standard),
-                transform var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-spring);
-        }
-        .tbtn:hover { background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-on-surface); }
-        .tbtn:active { transform: scale(.9); }
-        .tbtn:disabled { opacity: .35; pointer-events: none; }
-        .tbtn .msr { font-size: 22px; }
-        .tbtn.on { color: var(--md-sys-color-primary); }
+        #toolbar md-icon-button { flex: none; }
 
         #omniwrap {
-            display: flex; align-items: center; gap: 10px;
-            flex: 1; min-width: 0; height: 40px;
-            margin: 0 8px; padding: 0 8px 0 16px;
-            border-radius: 20px;
-            background: var(--md-sys-color-surface-container);
-            border: 1px solid transparent;
-            transition: border-radius var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-spatial),
-                background var(--md-sys-motion-duration-short4) linear;
-        }
-        #omniwrap:focus-within {
-            background: var(--md-sys-color-surface-container-high);
-            border-radius: var(--md-sys-shape-corner-md);
+            display: flex; align-items: center; gap: 8px;
+            flex: 1; min-width: 0;
+            margin: 0 8px;
         }
         #omniwrap .msr { font-size: 18px; color: var(--md-sys-color-on-surface-variant); flex: none; }
         #omniwrap.secure .msr.sec { color: var(--md-sys-color-primary); }
-        #urlbar {
-            flex: 1; min-width: 0; height: 100%;
-            border: none; outline: none; background: transparent;
-            color: var(--md-sys-color-on-surface);
-            font: var(--md-sys-typescale-body-large-font);
-            user-select: text;
-        }
-        #urlbar::placeholder { color: var(--md-sys-color-outline); }
+        #urlbar { flex: 1; min-width: 0; }
         #relayChip {
             display: none; align-items: center; gap: 4px; flex: none;
             height: 24px; padding: 0 10px;
             border-radius: 12px;
             background: var(--md-sys-color-surface-container-highest);
-            font: var(--md-sys-typescale-label-font);
+            font: var(--zl-ts-label-font);
             color: var(--md-sys-color-on-surface-variant);
             max-width: 160px; overflow: hidden;
         }
@@ -208,19 +183,8 @@
         #relayChip span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
         #omniActions { display: flex; align-items: center; gap: 2px; flex: none; }
 
-        #progress {
-            height: 3px; flex: none; background: transparent;
-            position: relative; opacity: 0;
-            transition: opacity var(--md-sys-motion-duration-short4) linear;
-        }
-        #progress.on { opacity: 1; }
-        #progress::after {
-            content: ''; position: absolute; inset: 0;
-            background: linear-gradient(90deg, transparent, var(--md-sys-color-primary), var(--md-sys-color-tertiary), transparent);
-            background-size: 50% 100%;
-            animation: zlslide 1.2s var(--md-sys-motion-easing-standard) infinite;
-        }
-        @keyframes zlslide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+        #progress { flex: none; display: none; }
+        #progress.on { display: block; }
 
         /* ── stage ── */
         #stage { flex: 1; min-height: 0; position: relative; background: var(--md-sys-color-surface-container-lowest); }
@@ -249,76 +213,39 @@
             text-align: center;
         }
         #ntClock { display: flex; flex-direction: column; gap: 4px; }
-        #ntTime { font: var(--md-sys-typescale-display-font); color: var(--md-sys-color-on-surface); letter-spacing: -.02em; }
-        #ntDate { font: var(--md-sys-typescale-body-medium-font); color: var(--md-sys-color-on-surface-variant); text-transform: capitalize; }
-        #ntSearchWrap {
-            display: flex; align-items: center; gap: 12px;
-            width: 100%; height: 52px; padding: 0 20px;
-            border-radius: 26px;
-            background: var(--md-sys-color-surface-container);
-            border: 1px solid var(--md-sys-color-outline-variant);
-            transition: border-radius var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-spatial),
-                background var(--md-sys-motion-duration-short4) linear;
-        }
-        #ntSearchWrap:focus-within { background: var(--md-sys-color-surface-container-high); border-radius: var(--md-sys-shape-corner-lg); }
-        #ntSearch {
-            flex: 1; border: none; outline: none; background: transparent;
-            color: var(--md-sys-color-on-surface);
-            font: var(--md-sys-typescale-body-large-font);
-            user-select: text;
-        }
-        #ntSearch::placeholder { color: var(--md-sys-color-outline); }
+        #ntTime { font: var(--zl-ts-display-font); color: var(--md-sys-color-on-surface); letter-spacing: -.02em; }
+        #ntDate { font: var(--zl-ts-body-medium-font); color: var(--md-sys-color-on-surface-variant); text-transform: capitalize; }
+        #ntSearchWrap { width: 100%; display: flex; }
+        #ntSearch { flex: 1; }
         #ntFaves { width: 100%; text-align: left; }
         #ntFaves h3 {
-            font: var(--md-sys-typescale-label-font);
+            font: var(--zl-ts-label-font);
             color: var(--md-sys-color-outline);
             text-transform: uppercase; letter-spacing: .08em;
             margin: 0 0 10px 4px;
         }
         #faveGrid { display: flex; flex-wrap: wrap; gap: 8px; }
-        .fave {
+        .fave { max-width: 240px; }
+        .faverow {
             display: flex; align-items: center; gap: 8px;
-            height: 40px; padding: 0 14px;
-            border: 1px solid var(--md-sys-color-outline-variant);
-            border-radius: var(--md-sys-shape-corner-md);
-            background: var(--md-sys-color-surface-container);
-            color: var(--md-sys-color-on-surface);
-            font: var(--md-sys-typescale-body-medium-font);
-            cursor: pointer; max-width: 180px;
-            transition: background var(--md-sys-motion-duration-short2) linear,
-                transform var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-spring);
+            width: 100%; max-width: 210px;
+            font: var(--zl-ts-body-medium-font);
         }
-        .fave:hover { background: var(--md-sys-color-surface-container-high); transform: translateY(-2px); }
-        .fave:active { transform: scale(.96); }
-        .fave img { width: 20px; height: 20px; border-radius: 4px; object-fit: contain; }
-        .fave span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .fave .fdel { width: 22px; height: 22px; border: none; background: transparent; border-radius: 50%; color: var(--md-sys-color-outline); cursor: pointer; display: grid; place-items: center; flex: none; }
-        .fave .fdel:hover { background: var(--md-sys-color-surface-variant); color: var(--md-sys-color-on-surface); }
-        .fave .fdel .msr { font-size: 14px; }
-        #ntEngine { text-align: center; font: var(--md-sys-typescale-body-small-font); color: var(--md-sys-color-outline); }
+        .faverow img { width: 20px; height: 20px; border-radius: 4px; object-fit: contain; flex: none; }
+        .faverow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+        .faverow .fdel { flex: none; }
+        #ntEngine { text-align: center; font: var(--zl-ts-body-small-font); color: var(--md-sys-color-outline); }
 
-        /* ── network log drawer ── */
-        #netlog {
-            position: fixed; top: 92px; right: 0; bottom: 0;
-            width: min(420px, 90vw);
-            background: var(--md-sys-color-surface-container-low);
-            border-left: 1px solid var(--md-sys-color-outline-variant);
-            display: flex; flex-direction: column;
-            transform: translateX(105%);
-            transition: transform var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-spatial);
-            z-index: 60;
-        }
-        #netlog.open { transform: translateX(0); }
+        /* ── network log drawer (md-side-sheet) ── */
+        #netlog { display: flex; flex-direction: column; --md-side-sheet-width: min(420px, 90vw); }
         #netlogHead {
             display: flex; align-items: center; gap: 10px;
             padding: 10px 12px; flex: none;
             border-bottom: 1px solid var(--md-sys-color-outline-variant);
         }
-        #netlogHead h3 { font: var(--md-sys-typescale-title-font); flex: 1; }
-        #netlogHead .tbtn { width: 32px; height: 32px; }
-        #netlogHead .tbtn .msr { font-size: 18px; }
+        #netlogHead h3 { font: var(--zl-ts-title-font); flex: 1; }
         #netlogList { flex: 1; overflow-y: auto; padding: 4px 0; font: var(--md-mono-font); }
-        #netlogEmpty { color: var(--md-sys-color-outline); padding: 14px 16px; font: var(--md-sys-typescale-body-medium-font); }
+        #netlogEmpty { color: var(--md-sys-color-outline); padding: 14px 16px; font: var(--zl-ts-body-medium-font); }
         .nlrow {
             display: flex; align-items: center; gap: 6px;
             padding: 3px 12px;
@@ -338,118 +265,23 @@
             display: flex; gap: 16px; flex: none;
             padding: 8px 16px;
             border-top: 1px solid var(--md-sys-color-outline-variant);
-            font: var(--md-sys-typescale-label-font);
+            font: var(--zl-ts-label-font);
             color: var(--md-sys-color-on-surface-variant);
         }
 
-        /* ── dialogs, switches, buttons, fields ── */
-        #dlgScrim {
-            position: fixed; inset: 0; z-index: 70;
-            display: none; align-items: center; justify-content: center;
-            background: color-mix(in srgb, var(--md-sys-color-scrim) 55%, transparent);
-            padding: 24px;
-        }
-        #dlgScrim.open { display: flex; animation: zlfade var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-spatial); }
-        .dialog {
-            width: min(560px, 100%); max-height: 84vh; overflow-y: auto;
-            background: var(--md-sys-color-surface-container-high);
-            border-radius: var(--md-sys-shape-corner-xl);
-            padding: 24px;
-            display: flex; flex-direction: column; gap: 20px;
-        }
-        .dialog h2 { font: var(--md-sys-typescale-headline-font); }
+        /* ── settings sheet (md-side-sheet) layout ── */
+        #setSheet { --md-side-sheet-width: min(560px, 94vw); }
         .setgroup { display: flex; flex-direction: column; gap: 12px; }
         .setgroup h4 {
-            font: var(--md-sys-typescale-label-font);
+            font: var(--zl-ts-label-font);
             color: var(--md-sys-color-primary);
             text-transform: uppercase; letter-spacing: .1em;
         }
         .setrow { display: flex; align-items: center; gap: 16px; }
         .setrow .grow { flex: 1; min-width: 0; }
-        .stitle { font: var(--md-sys-typescale-body-large-font); }
-        .shint { font: var(--md-sys-typescale-body-small-font); color: var(--md-sys-color-on-surface-variant); margin-top: 2px; }
-        .field {
-            width: 100%; height: 44px; padding: 0 14px;
-            border-radius: var(--md-sys-shape-corner-sm);
-            border: 1px solid var(--md-sys-color-outline-variant);
-            outline: none; background: var(--md-sys-color-surface-container-lowest);
-            color: var(--md-sys-color-on-surface);
-            font: var(--md-sys-typescale-body-large-font);
-            user-select: text;
-        }
-        select.field { cursor: pointer; }
-        .field:focus { border-color: var(--md-sys-color-primary); }
-        .btnrow { display: flex; justify-content: flex-end; gap: 8px; }
-        .zbtn {
-            height: 40px; padding: 0 20px;
-            border-radius: 20px; border: none;
-            font: var(--md-sys-typescale-label-font); letter-spacing: .02em;
-            cursor: pointer;
-            transition: transform var(--md-sys-motion-duration-short2) var(--md-sys-motion-easing-spring),
-                background var(--md-sys-motion-duration-short2) linear;
-        }
-        .zbtn:active { transform: scale(.96); }
-        .zbtn.filled { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
-        .zbtn.filled:hover { box-shadow: 0 1px 6px rgba(91, 218, 194, .4); }
-        .zbtn.outlined { background: transparent; color: var(--md-sys-color-primary); border: 1px solid var(--md-sys-color-outline); }
-        .zbtn.text { background: transparent; color: var(--md-sys-color-primary); padding: 0 12px; }
-        .zbtn.text:hover { background: color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent); }
-        .zswitch { position: relative; display: inline-flex; align-items: center; flex: none; cursor: pointer; }
-        .zswitch input { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; margin: 0; }
-        .zswitch .track {
-            width: 52px; height: 32px; border-radius: 16px;
-            background: var(--md-sys-color-surface-container-highest);
-            border: 2px solid var(--md-sys-color-outline);
-            transition: background var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-                border-color var(--md-sys-motion-duration-short4) linear;
-        }
-        .zswitch .thumb {
-            position: absolute; left: 6px; width: 16px; height: 16px;
-            border-radius: 50%;
-            background: var(--md-sys-color-outline);
-            transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-spring),
-                width var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-spring),
-                height var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-spring),
-                background var(--md-sys-motion-duration-short2) linear;
-        }
-        .zswitch input:checked ~ .track { background: var(--md-sys-color-primary); border-color: var(--md-sys-color-primary); }
-        .zswitch input:checked ~ .thumb { transform: translateX(20px); background: var(--md-sys-color-on-primary); width: 24px; height: 24px; }
-        .zswitch input:focus-visible ~ .track { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
-
-        /* ── main menu ── */
-        #mainMenu {
-            position: fixed; top: 88px; right: 8px; z-index: 80;
-            display: none; min-width: 250px;
-            background: var(--md-sys-color-surface-container-high);
-            border-radius: var(--md-sys-shape-corner-md);
-            border: 1px solid var(--md-sys-color-outline-variant);
-            padding: 8px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, .5);
-        }
-        #mainMenu.open { display: block; animation: zlmenu var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-emphasized-spatial); transform-origin: top right; }
-        @keyframes zlmenu { from { transform: scaleY(.85); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
-        .mi {
-            display: flex; align-items: center; gap: 12px; width: 100%;
-            padding: 10px 16px; border: none; background: transparent; cursor: pointer;
-            color: var(--md-sys-color-on-surface); font: var(--md-sys-typescale-body-large-font);
-            text-align: left;
-        }
-        .mi:hover { background: var(--md-sys-color-surface-container-highest); }
-        .mi .msr { font-size: 20px; color: var(--md-sys-color-on-surface-variant); }
-        .mi kbd { margin-left: auto; font: var(--md-mono-font); font-size: 11px; color: var(--md-sys-color-outline); }
-        .msep { height: 1px; background: var(--md-sys-color-outline-variant); margin: 6px 0; }
-
-        /* toast */
-        #toast {
-            position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 80px);
-            background: var(--md-sys-color-inverse-surface); color: var(--md-sys-color-inverse-on-surface);
-            padding: 12px 20px; border-radius: var(--md-sys-shape-corner-sm);
-            font: var(--md-sys-typescale-body-medium-font);
-            z-index: 90; opacity: 0; pointer-events: none;
-            transition: all var(--md-sys-motion-duration-medium2) var(--md-sys-motion-easing-emphasized-spatial);
-            max-width: 70vw;
-        }
-        #toast.show { transform: translate(-50%, 0); opacity: 1; }
+        .stitle { font: var(--zl-ts-body-large-font); }
+        .shint { font: var(--zl-ts-body-small-font); color: var(--md-sys-color-on-surface-variant); margin-top: 2px; }
+        #setSheet md-text-field, #setSheet md-select { width: 100%; }
 
         /* reduced motion: simplify everything */
         @media (prefers-reduced-motion: reduce) {
@@ -465,28 +297,34 @@
     <nav id="tabsbar" aria-label="Tabs">
         <div id="tabstrip"></div>
         <div id="stripringht">
-            <button id="newtabBtn" class="tbtn" title="New tab" aria-label="New tab"><span class="msr">add</span></button>
+            <md-icon-button id="newtabBtn" icon="add" title="New tab" aria-label="New tab"></md-icon-button>
         </div>
     </nav>
 
     <!-- ── Toolbar ────────────────────────────────────────────────── -->
     <header id="toolbar">
-        <button id="backBtn" class="tbtn" title="Back" aria-label="Back" disabled><span class="msr">arrow_back</span></button>
-        <button id="fwdBtn" class="tbtn" title="Forward" aria-label="Forward" disabled><span class="msr">arrow_forward</span></button>
-        <button id="reloadBtn" class="tbtn" title="Reload" aria-label="Reload"><span class="msr">refresh</span></button>
-        <button id="homeBtn" class="tbtn" title="Home" aria-label="Home"><span class="msr">home</span></button>
+        <md-icon-button id="backBtn" icon="arrow_back" title="Back" aria-label="Back" disabled></md-icon-button>
+        <md-icon-button id="fwdBtn" icon="arrow_forward" title="Forward" aria-label="Forward" disabled></md-icon-button>
+        <md-icon-button id="reloadBtn" icon="refresh" title="Reload" aria-label="Reload"></md-icon-button>
+        <md-icon-button id="homeBtn" icon="home" title="Home" aria-label="Home"></md-icon-button>
         <div id="omniwrap">
             <span class="msr sec">language</span>
-            <input id="urlbar" type="text" spellcheck="false" autocomplete="off"
-                placeholder="Search or enter address" aria-label="Address and search bar" />
+            <md-text-field id="urlbar" variant="filled" single-line placeholder="Search or enter address" aria-label="Address and search bar"></md-text-field>
             <div id="relayChip" title="Relay in use"><span class="msr">swap_horiz</span><span id="relayName"></span></div>
             <div id="omniActions">
-                <button id="logBtn" class="tbtn" style="width:34px;height:34px" title="Network log" aria-label="Network log"><span class="msr" style="font-size:19px">monitor</span></button>
-                <button id="menuBtn" class="tbtn" style="width:34px;height:34px" title="Menu" aria-label="Menu"><span class="msr" style="font-size:19px">more_vert</span></button>
+                <md-icon-button id="logBtn" icon="monitor" title="Network log" aria-label="Network log"></md-icon-button>
             </div>
+            <md-menu id="mainMenu" aria-label="Main menu">
+                <md-icon-button slot="trigger" id="menuBtn" icon="more_vert" title="Menu" aria-label="Menu"></md-icon-button>
+                <md-menu-item id="mmNewTab" leading-icon="tab_new" headline="New tab" trailing-text="Ctrl+T"></md-menu-item>
+                <md-menu-item id="mmSettings" leading-icon="settings" headline="Settings"></md-menu-item>
+                <md-menu-item id="mmNetlog" leading-icon="monitor" headline="Network log" trailing-text="Ctrl+Shift+L"></md-menu-item>
+                <md-menu-item id="mmFave" leading-icon="star" headline="Bookmark this page" trailing-text="Ctrl+D"></md-menu-item>
+                <md-menu-item id="mmAbout" leading-icon="info" headline="About Zeolite"></md-menu-item>
+            </md-menu>
         </div>
     </header>
-    <div id="progress" aria-hidden="true"></div>
+    <md-progress-indicator id="progress" type="linear" indeterminate aria-hidden="true"></md-progress-indicator>
 
     <!-- ── Content stage (per-tab iframes + new tab page) ─────────── -->
     <main id="stage">
@@ -497,9 +335,8 @@
                     <div id="ntDate"></div>
                 </div>
                 <form id="ntSearchWrap" role="search">
-                    <span class="msr" style="color:var(--md-sys-color-on-surface-variant)">search</span>
-                    <input id="ntSearch" type="text" placeholder="Search privately through the tunnel"
-                        aria-label="Search" autocomplete="off" spellcheck="false" />
+                    <md-text-field id="ntSearch" variant="outlined" single-line icon="search"
+                        placeholder="Search privately through the tunnel" aria-label="Search"></md-text-field>
                 </form>
                 <div id="ntFaves">
                     <h3>Favorites</h3>
@@ -510,13 +347,13 @@
         </section>
     </main>
 
-    <!-- ── Network log drawer ────────────────────────────────────── -->
-    <aside id="netlog" aria-label="Network log">
+    <!-- ── Network log drawer (md-side-sheet) ─────────────────────── -->
+    <md-side-sheet id="netlog" headline="Network log" divider aria-label="Network log">
         <div id="netlogHead">
             <span class="msr" style="color:var(--md-sys-color-primary)">monitor</span>
-            <h3>Network log</h3>
-            <button id="nlClear" class="tbtn" title="Clear" aria-label="Clear log"><span class="msr">delete</span></button>
-            <button id="nlClose" class="tbtn" title="Close" aria-label="Close log"><span class="msr">close</span></button>
+            <h3>Requests</h3>
+            <md-icon-button id="nlClear" icon="delete" title="Clear" aria-label="Clear log"></md-icon-button>
+            <md-icon-button id="nlClose" icon="close" title="Close" aria-label="Close log"></md-icon-button>
         </div>
         <div id="netlogList"><div id="netlogEmpty">No requests yet.</div></div>
         <div id="netlogStats">
@@ -524,12 +361,10 @@
             <span id="nlsCache">0 cached</span>
             <span id="nlsBlocked">0 blocked</span>
         </div>
-    </aside>
+    </md-side-sheet>
 
-    <!-- ── Settings dialog ───────────────────────────────────────── -->
-    <div id="dlgScrim" role="dialog" aria-modal="true" aria-label="Settings">
-        <div class="dialog">
-            <h2>Settings</h2>
+    <!-- ── Settings sheet (md-side-sheet) ─────────────────────────── -->
+    <md-side-sheet id="setSheet" headline="Settings" divider aria-label="Settings">
             <div class="setgroup">
                 <h4>Tunnel</h4>
                 <div class="setrow">
@@ -537,11 +372,11 @@
                         <div class="stitle">Relay pool</div>
                         <div class="shint">Rotate across public wisp relays; failed relays are skipped per site.</div>
                     </div>
-                    <label class="zswitch"><input type="checkbox" id="setPool" /><span class="track"></span><span class="thumb"></span></label>
+                    <md-switch id="setPool" aria-label="Relay pool"></md-switch>
                 </div>
                 <div class="setrow" style="flex-direction:column;align-items:stretch">
                     <div class="stitle">Primary relay</div>
-                    <input id="setWisp" class="field" type="text" placeholder="wss://relay.example/wisp/" spellcheck="false" />
+                    <md-text-field id="setWisp" variant="outlined" single-line placeholder="wss://relay.example/wisp/" aria-label="Primary relay"></md-text-field>
                     <div class="shint" id="wispStatus" style="margin-top:6px">Custom relay overrides the pool when reachable.</div>
                 </div>
             </div>
@@ -552,24 +387,24 @@
                         <div class="stitle">Block trackers and ads</div>
                         <div class="shint">Known tracking and advertising hosts never leave the page.</div>
                     </div>
-                    <label class="zswitch"><input type="checkbox" id="setBlock" /><span class="track"></span><span class="thumb"></span></label>
+                    <md-switch id="setBlock" aria-label="Block trackers and ads"></md-switch>
                 </div>
                 <div class="setrow" style="flex-direction:column;align-items:stretch">
                     <div class="stitle">Search engine</div>
-                    <select id="setEngine" class="field">
-                        <option value="https://html.duckduckgo.com/html/?q=%s">DuckDuckGo (html)</option>
-                        <option value="https://lite.duckduckgo.com/lite/?q=%s">DuckDuckGo (lite)</option>
-                        <option value="https://search.brave.com/search?q=%s">Brave Search</option>
-                        <option value="https://www.bing.com/search?q=%s">Bing</option>
-                        <option value="https://www.startpage.com/sp/search?query=%s">Startpage</option>
-                    </select>
+                    <md-select id="setEngine" label="Search engine">
+                        <md-option value="https://html.duckduckgo.com/html/?q=%s" headline="DuckDuckGo (html)"></md-option>
+                        <md-option value="https://lite.duckduckgo.com/lite/?q=%s" headline="DuckDuckGo (lite)"></md-option>
+                        <md-option value="https://search.brave.com/search?q=%s" headline="Brave Search"></md-option>
+                        <md-option value="https://www.bing.com/search?q=%s" headline="Bing"></md-option>
+                        <md-option value="https://www.startpage.com/sp/search?query=%s" headline="Startpage"></md-option>
+                    </md-select>
                 </div>
             </div>
             <div class="setgroup">
                 <h4>Identity</h4>
                 <div class="setrow" style="flex-direction:column;align-items:stretch">
                     <div class="stitle">User agent</div>
-                    <input id="setUA" class="field" type="text" spellcheck="false" />
+                    <md-text-field id="setUA" variant="outlined" single-line aria-label="User agent"></md-text-field>
                     <div class="shint">Advertised everywhere consistently: requests, navigator, and page scripts see the same string.</div>
                 </div>
             </div>
@@ -580,32 +415,20 @@
                         <div class="stitle">Clear all site data</div>
                         <div class="shint">Cookies, per-site storage, favorites, and the request cache.</div>
                     </div>
-                    <button id="setWipe" class="zbtn outlined">Clear</button>
+                    <md-button id="setWipe" variant="outlined" label="Clear"></md-button>
                 </div>
             </div>
             <div class="setgroup">
                 <h4>About</h4>
                 <div class="shint" id="aboutBox"></div>
             </div>
-            <div class="btnrow">
-                <button id="setClose" class="zbtn text">Close</button>
-                <button id="setSave" class="zbtn filled">Save</button>
+            <div slot="actions">
+                <md-button id="setClose" variant="text" label="Close"></md-button>
+                <md-button id="setSave" variant="filled" label="Save"></md-button>
             </div>
-        </div>
-    </div>
+    </md-side-sheet>
 
-    <!-- ── Main menu ─────────────────────────────────────────────── -->
-    <div id="mainMenu" role="menu">
-        <button class="mi" id="mmNewTab"><span class="msr">tab_new</span>New tab<kbd>Ctrl+T</kbd></button>
-        <button class="mi" id="mmSettings"><span class="msr">settings</span>Settings</button>
-        <div class="msep"></div>
-        <button class="mi" id="mmNetlog"><span class="msr">monitor</span>Network log<kbd>Ctrl+Shift+L</kbd></button>
-        <button class="mi" id="mmFave"><span class="msr">star</span>Bookmark this page<kbd>Ctrl+D</kbd></button>
-        <div class="msep"></div>
-        <button class="mi" id="mmAbout"><span class="msr">info</span>About Zeolite</button>
-    </div>
-
-    <div id="toast" role="status"></div>
+    <md-snackbar id="zlToast" message=""></md-snackbar>
 
     <!-- ════════════════════════════════════════════════════════════════════════
          Zeolite page runtime. Injected first into every proxied document.
@@ -1732,13 +1555,25 @@
   ];
 
   /* ────────────────────────── shell UI helpers ────────────────────────── */
-  var toastTm = null;
   function toast(msg) {
-    var t = $('#toast');
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(toastTm);
-    toastTm = setTimeout(function () { t.classList.remove('show'); }, 3200);
+    var t = $('#zlToast');
+    t.message = msg;
+    try { t.show(msg); } catch (e) {}
+  }
+  function sheetOpen(s) {
+    if (!s) return;
+    try { if (s.show) return s.show(); } catch (e) {}
+    s.setAttribute('open', '');
+  }
+  function sheetClose(s) {
+    if (!s) return;
+    try { if (s.close) return s.close(); } catch (e) {}
+    s.removeAttribute('open');
+  }
+  function sheetToggle(s) {
+    if (!s) return;
+    var open = s.open === true || s.hasAttribute('open');
+    if (open) sheetClose(s); else sheetOpen(s);
   }
 
   var stats = { total: 0, cached: 0, blocked: 0 };
@@ -1784,7 +1619,7 @@
   }
 
   /* ────────────────────────── transport ────────────────────────── */
-  var WISP_POOL = ['wss://wisp.mercurywork.shop/', 'wss://anura.pro/', 'wss://wisp.terbiumon.top/wisp/', 'wss://mages.io/wisp/'];
+  var WISP_POOL = ['wss://anura.pro/', 'wss://wisp.mercurywork.shop/', 'wss://wisp.run/', 'wss://mages.io/wisp/', 'wss://wisp.terbiumon.top/wisp/'];
   var activeRelay = null;
   var relayTried = new Set();
   var relayBusy = null;
@@ -1818,12 +1653,66 @@
       throw new Error('probe status ' + r.status);
     } catch (e) { clearTimeout(tm); relayTried.add(url); throw e; }
   }
+  function wsProbe(url, timeoutMs) {
+    /* raw wisp v1 CONNECT handshake over WebSocket, big-endian framing */
+    return new Promise(function (resolve) {
+      var ws = null, tm;
+      var finish = function (ok) {
+        clearTimeout(tm);
+        try { if (ws && ws.readyState < 2) ws.close(); } catch (e) {}
+        resolve(ok);
+      };
+      try { ws = new WebSocket(url, 'wisp'); } catch (e) { return resolve(false); }
+      tm = setTimeout(function () { finish(false); }, timeoutMs || 4000);
+      ws.onopen = function () {
+        var host = 'www.cloudflare.com';
+        var f = new Uint8Array(9 + host.length);
+        f[0] = 1; f[4] = 1;             /* CONNECT, stream 1 */
+        f[5] = 1; f[6] = 0;             /* wisp v1, TCP */
+        f[7] = 0; f[8] = 80;            /* port 80 */
+        for (var i = 0; i < host.length; i++) f[9 + i] = host.charCodeAt(i);
+        try { ws.send(f); } catch (e) { finish(false); }
+      };
+      ws.onmessage = function (ev) {
+        if (typeof ev.data === 'string') return;
+        var ok = false;
+        try { var b = new Uint8Array(ev.data); ok = b.length > 5 && b[0] === 0; } catch (e) {}
+        finish(ok);                     /* CONTINUE frame: relay speaks wisp */
+      };
+      ws.onerror = function () { finish(false); };
+      ws.onclose = function () { finish(false); };
+    });
+  }
+  function probeRace(cands, timeoutMs) {
+    /* probe all candidates in parallel, keep pool-order preference */
+    return new Promise(function (resolve) {
+      var n = cands.length;
+      if (!n) return resolve([]);
+      var states = new Array(n).fill(null), done = false;
+      var check = function () {
+        for (var i = 0; i < n; i++) {
+          if (states[i] === true) { if (!done) { done = true; resolve(cands.slice(i)); } return; }
+          if (states[i] === null) return;
+        }
+        if (!done) { done = true; resolve([]); }
+      };
+      cands.forEach(function (u, i) {
+        setTimeout(function () {
+          if (done) { states[i] = false; return; }
+          wsProbe(u, timeoutMs).then(function (ok) { states[i] = !!ok; check(); });
+        }, i * 250);
+      });
+    });
+  }
   async function initTransport() {
     if (!window.libcurl) throw new Error('libcurl.js did not load from the CDN');
     var cands = relayCandidates();
-    for (var i = 0; i < cands.length; i++) {
-      var url = cands[i];
-      if (relayTried.has(url) && url !== cands[0]) continue;
+    var ordered = [];
+    try { ordered = await probeRace(cands, 4000); } catch (e) {}
+    if (!ordered.length) ordered = cands.slice(); /* ponytail: raw probes blocked, sequential verify still runs */
+    for (var i = 0; i < ordered.length; i++) {
+      var url = ordered[i];
+      if (relayTried.has(url) && url !== ordered[0]) continue;
       try {
         await probeRelay(url);
         activeRelay = url;
@@ -1842,10 +1731,13 @@
     if (relayBusy) return relayBusy;
     var p = (async function () {
       var cands = relayCandidates().filter(function (u) { return u !== activeRelay; });
-      for (var i = 0; i < cands.length; i++) {
+      var ordered = [];
+      try { ordered = await probeRace(cands, 4000); } catch (e) {}
+      if (!ordered.length) ordered = cands.slice();
+      for (var i = 0; i < ordered.length; i++) {
         try {
-          await probeRelay(cands[i]);
-          activeRelay = cands[i];
+          await probeRelay(ordered[i]);
+          activeRelay = ordered[i];
           updateRelayChip();
           toast('Switched relay to ' + hostOf(activeRelay));
           return true;
@@ -2499,7 +2391,7 @@
     var t = tabs.find(function (x) { return x.id === activeTabId; });
     if (!t) return;
     var ub = $('#urlbar');
-    if (document.activeElement !== ub) {
+    if (!ub.matches(':focus-within')) {
       ub.value = t.url === 'zl://newtab' ? '' : t.url;
     }
     var wrap = $('#omniwrap');
@@ -2917,13 +2809,19 @@
       return;
     }
     f.forEach(function (fav, i) {
-      var b = el('button'); b.className = 'fave';
+      var b = el('md-card');
+      b.setAttribute('variant', 'filled');
+      b.setAttribute('interactive', '');
+      b.className = 'fave';
+      var row = el('div'); row.className = 'faverow';
       var icon = document.createElement('img');
       icon.src = 'https://icons.duckduckgo.com/ip3/' + hostOf(fav.u) + '.ico';
       icon.onerror = function () { icon.src = DEFAULT_FAV; };
       var name = el('span', '', fav.t || hostOf(fav.u));
-      var del = el('button'); del.className = 'fdel';
-      del.innerHTML = '<span class="msr">close</span>';
+      var del = el('md-icon-button');
+      del.setAttribute('icon', 'close');
+      del.className = 'fdel';
+      del.setAttribute('aria-label', 'Remove favorite');
       del.addEventListener('click', function (ev) {
         ev.stopPropagation();
         var list = faves();
@@ -2931,7 +2829,8 @@
         saveFaves(list);
         renderFaves();
       });
-      b.append(icon, name, del);
+      row.append(icon, name, del);
+      b.appendChild(row);
       b.addEventListener('click', function () {
         var t = tabs.find(function (x) { return x.id === activeTabId; });
         if (t) navigate(t, fav.u, { force: true });
@@ -2968,16 +2867,16 @@
     $('#setBlock').checked = !!getS('block', true);
     $('#setEngine').value = String(getS('engine', DEF_ENGINE));
     $('#setUA').value = String(getS('ua', DEFAULT_UA));
-    $('#aboutBox').textContent = 'Zeolite single-file edition. Engine: wisp over WebSocket with wasm TLS (libcurl.js 0.7.4, loaded at runtime from jsDelivr, LGPL). AST rewriting: acorn. One HTML file, no service worker, no build step.';
-    $('#dlgScrim').classList.add('open');
+    $('#aboutBox').textContent = 'Zeolite single-file edition. Engine: wisp over WebSocket with wasm TLS (libcurl.js 0.7.4, loaded at runtime from jsDelivr, LGPL). AST rewriting: acorn. UI: Material 3 Expressive web components (md3e-web, loaded at runtime from jsDelivr, Apache-2.0). One HTML file, no service worker, no build step.';
+    sheetOpen($('#setSheet'));
   }
   function saveSettings() {
     setS('pool', $('#setPool').checked);
-    setS('wisp', $('#setWisp').value.trim());
+    setS('wisp', String($('#setWisp').value || '').trim());
     setS('block', $('#setBlock').checked);
-    setS('engine', $('#setEngine').value);
-    setS('ua', $('#setUA').value.trim() || DEFAULT_UA);
-    $('#dlgScrim').classList.remove('open');
+    setS('engine', String($('#setEngine').value || DEF_ENGINE));
+    setS('ua', String($('#setUA').value || '').trim() || DEFAULT_UA);
+    sheetClose($('#setSheet'));
     relayTried.clear();
     transportReady = false;
     initTransport().then(function () {
@@ -3010,44 +2909,42 @@
       if (t) navigate(t, 'zl://newtab', { force: true });
     });
     $('#urlbar').addEventListener('keydown', function (e) { if (e.key === 'Enter') omniGo(); });
-    $('#urlbar').addEventListener('focus', function () { $('#urlbar').select(); });
-    $('#logBtn').addEventListener('click', function () { $('#netlog').classList.toggle('open'); });
-    $('#nlClose').addEventListener('click', function () { $('#netlog').classList.remove('open'); });
+    $('#urlbar').addEventListener('focus', function () { try { var ub = $('#urlbar'); if (ub.select) ub.select(); } catch (e) {} });
+    $('#logBtn').addEventListener('click', function () { sheetToggle($('#netlog')); });
+    $('#nlClose').addEventListener('click', function () { sheetClose($('#netlog')); });
     $('#nlClear').addEventListener('click', function () { nlList.textContent = ''; nlCount = 0; stats.total = stats.cached = stats.blocked = 0; nlList.innerHTML = '<div id="netlogEmpty">No requests yet.</div>'; updateStats(); });
 
-    $('#menuBtn').addEventListener('click', function (e) { e.stopPropagation(); $('#mainMenu').classList.toggle('open'); });
-    document.addEventListener('click', function (e) {
-      if (!$('#mainMenu').contains(e.target)) $('#mainMenu').classList.remove('open');
-    });
+    /* the md-menu trigger opens it; items close it on select */
     $('#mmNewTab').addEventListener('click', function () { var t = makeTab('zl://newtab'); activate(t.id); });
     $('#mmSettings').addEventListener('click', function () { openSettings(); });
-    $('#mmNetlog').addEventListener('click', function () { $('#netlog').classList.toggle('open'); });
+    $('#mmNetlog').addEventListener('click', function () { sheetToggle($('#netlog')); });
     $('#mmFave').addEventListener('click', addFave);
     $('#mmAbout').addEventListener('click', function () { toast('Zeolite: a browser-shaped tunnel in one HTML file'); });
 
-    $('#setClose').addEventListener('click', function () { $('#dlgScrim').classList.remove('open'); });
+    $('#setClose').addEventListener('click', function () { sheetClose($('#setSheet')); });
     $('#setSave').addEventListener('click', saveSettings);
     $('#setWipe').addEventListener('click', wipeData);
-    $('#dlgScrim').addEventListener('click', function (e) { if (e.target === this) this.classList.remove('open'); });
 
-    $('#ntSearchWrap').addEventListener('submit', function (e) {
+    function ntGo(e) {
       e.preventDefault();
       var t = tabs.find(function (x) { return x.id === activeTabId; });
       var u = normUrl($('#ntSearch').value);
       if (t && u) { $('#ntSearch').value = ''; navigate(t, u, { force: true }); }
-    });
+    }
+    $('#ntSearchWrap').addEventListener('submit', ntGo);
+    $('#ntSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') ntGo(e); });
 
     document.addEventListener('keydown', function (e) {
       var mod = e.ctrlKey || e.metaKey;
-      if (e.key === 'Escape') { $('#mainMenu').classList.remove('open'); $('#dlgScrim').classList.remove('open'); return; }
+      if (e.key === 'Escape') { sheetClose($('#netlog')); sheetClose($('#setSheet')); return; }
       if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goHist(-1); return; }
       if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goHist(1); return; }
       if (!mod) return;
       var k = e.key.toLowerCase();
       if (k === 't' && !e.shiftKey) { e.preventDefault(); var t = makeTab('zl://newtab'); activate(t.id); }
       else if (k === 'w' && !e.shiftKey) { e.preventDefault(); if (activeTabId != null) closeTab(activeTabId); }
-      else if (k === 'l' && !e.shiftKey) { e.preventDefault(); $('#urlbar').focus(); }
-      else if (k === 'l' && e.shiftKey) { e.preventDefault(); $('#netlog').classList.toggle('open'); }
+      else if (k === 'l' && !e.shiftKey) { e.preventDefault(); try { $('#urlbar').focus(); } catch (e2) {} }
+      else if (k === 'l' && e.shiftKey) { e.preventDefault(); sheetToggle($('#netlog')); }
       else if (k === 'd' && !e.shiftKey) { e.preventDefault(); addFave(); }
       else if (k === 'r' && !e.shiftKey) { e.preventDefault(); reloadActive(); }
     });

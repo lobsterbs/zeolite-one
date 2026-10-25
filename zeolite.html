@@ -89,13 +89,13 @@
         }
         button { font-family: inherit; color: inherit; }
 
-        /* full rounded variable font, self-hosted on jsDelivr; declared after the md3e subset face so it wins font matching and every ligature resolves */
+        /* full rounded icon set at weight 400, self-hosted on jsDelivr; declared after the md3e subset face so it wins font matching and every ligature resolves */
         @font-face {
             font-family: 'Material Symbols Rounded';
             font-style: normal;
-            font-weight: 100 700;
+            font-weight: 400;
             font-display: block;
-            src: url('https://cdn.jsdelivr.net/npm/material-symbols@0.48.1/material-symbols-rounded.woff2') format('woff2');
+            src: url('https://cdn.jsdelivr.net/npm/@fontsource/material-symbols-rounded@5.3.9/files/material-symbols-rounded-latin-400-normal.woff2') format('woff2');
         }
         .msr {
             font-family: 'Material Symbols Rounded';
@@ -176,7 +176,8 @@
         }
         #omniwrap .msr { font-size: 18px; color: var(--md-sys-color-on-surface-variant); flex: none; }
         #omniwrap.secure .msr.sec { color: var(--md-sys-color-primary); }
-        #urlbar { flex: 1; min-width: 0; }
+        #urlbar { flex: 1; min-width: 0; width: auto; }
+        #urlbar[hidden] { display: none; }
         #relayChip {
             display: none; align-items: center; gap: 4px; flex: none;
             height: 24px; padding: 0 10px;
@@ -224,7 +225,7 @@
         #ntTime { font: var(--zl-ts-display-font); color: var(--md-sys-color-on-surface); letter-spacing: -.02em; }
         #ntDate { font: var(--zl-ts-body-medium-font); color: var(--md-sys-color-on-surface-variant); text-transform: capitalize; }
         #ntSearchWrap { width: 100%; display: flex; }
-        #ntSearch { flex: 1; }
+        #ntSearch { flex: 1; width: auto; }
         #ntFaves { width: 100%; text-align: left; }
         #ntFaves h3 {
             font: var(--zl-ts-label-font);
@@ -314,8 +315,9 @@
         <md-icon-button id="reloadBtn" icon="refresh" title="Reload" aria-label="Reload"></md-icon-button>
         <md-icon-button id="homeBtn" icon="home" title="Home" aria-label="Home"></md-icon-button>
         <div id="omniwrap">
-            <span class="msr sec">language</span>
-            <md-text-field id="urlbar" variant="filled" single-line placeholder="Search or enter address" aria-label="Address and search bar"></md-text-field>
+            <md-search-bar id="urlbar" placeholder="Search or enter address" aria-label="Address and search bar">
+                <span slot="leading" class="msr sec" aria-hidden="true">search</span>
+            </md-search-bar>
             <div id="relayChip" title="Relay in use"><span class="msr">swap_horiz</span><span id="relayName"></span></div>
             <div id="omniActions">
                 <md-icon-button id="logBtn" icon="monitor" title="Network log" aria-label="Network log"></md-icon-button>
@@ -340,10 +342,9 @@
                     <div id="ntTime">00:00</div>
                     <div id="ntDate"></div>
                 </div>
-                <form id="ntSearchWrap" role="search">
-                    <md-text-field id="ntSearch" variant="outlined" single-line icon="search"
-                        placeholder="Search privately through the tunnel" aria-label="Search"></md-text-field>
-                </form>
+                <div id="ntSearchWrap">
+                    <md-search-bar id="ntSearch" placeholder="Search privately through the tunnel" aria-label="Search"></md-search-bar>
+                </div>
                 <div id="ntFaves">
                     <h3>Favorites</h3>
                     <div id="faveGrid"></div>
@@ -1625,7 +1626,7 @@
   }
 
   /* ────────────────────────── transport ────────────────────────── */
-  var WISP_POOL = ['wss://anura.pro/', 'wss://wisp.mercurywork.shop/', 'wss://wisp.run/', 'wss://mages.io/wisp/', 'wss://wisp.terbiumon.top/wisp/'];
+  var WISP_POOL = ['wss://wisp.terbiumon.top/wisp/', 'wss://anura.pro/', 'wss://wisp.run/', 'wss://wisp.mercurywork.shop/', 'wss://mages.io/wisp/'];
   var activeRelay = null;
   var relayTried = new Set();
   var relayBusy = null;
@@ -1659,30 +1660,39 @@
     } catch (e) { clearTimeout(tm); relayTried.add(url); throw e; }
   }
   function wsProbe(url, timeoutMs) {
-    /* raw wisp v1 CONNECT handshake over WebSocket, big-endian framing */
+    /* raw wisp v1 handshake over WebSocket, little-endian per the wisp spec: type u8, stream id u32 LE.
+       The relay opens with CONTINUE on stream 0 (the version frame); we then CONNECT stream 1 to cloudflare:80. */
     return new Promise(function (resolve) {
-      var ws = null, tm;
+      var ws = null, tm, stage = 0;
       var finish = function (ok) {
         clearTimeout(tm);
         try { if (ws && ws.readyState < 2) ws.close(); } catch (e) {}
         resolve(ok);
       };
-      try { ws = new WebSocket(url, 'wisp'); } catch (e) { return resolve(false); }
+      try { ws = new WebSocket(url); } catch (e) { return resolve(false); }
       tm = setTimeout(function () { finish(false); }, timeoutMs || 4000);
-      ws.onopen = function () {
-        var host = 'www.cloudflare.com';
-        var f = new Uint8Array(9 + host.length);
-        f[0] = 1; f[4] = 1;             /* CONNECT, stream 1 */
-        f[5] = 1; f[6] = 0;             /* wisp v1, TCP */
-        f[7] = 0; f[8] = 80;            /* port 80 */
-        for (var i = 0; i < host.length; i++) f[9 + i] = host.charCodeAt(i);
-        try { ws.send(f); } catch (e) { finish(false); }
-      };
       ws.onmessage = function (ev) {
         if (typeof ev.data === 'string') return;
-        var ok = false;
-        try { var b = new Uint8Array(ev.data); ok = b.length > 5 && b[0] === 0; } catch (e) {}
-        finish(ok);                     /* CONTINUE frame: relay speaks wisp */
+        var b;
+        try { b = new Uint8Array(ev.data); } catch (e) { return finish(false); }
+        if (b.length < 5) return;
+        var sid = b[1] | (b[2] << 8) | (b[3] << 16) | (b[4] << 24); /* stream id, little-endian */
+        if (b[0] === 4) return finish(false);                      /* CLOSE */
+        if (b[0] !== 3) return finish(false);                      /* frames must be CONTINUE */
+        if (stage === 0) {
+          if (sid !== 0) return finish(false);                     /* version frame from the relay */
+          stage = 1;
+          var host = 'www.cloudflare.com';
+          var f = new Uint8Array(8 + host.length);
+          f[0] = 1;                                                /* CONNECT */
+          f[1] = 1; f[2] = 0; f[3] = 0; f[4] = 0;                  /* stream 1, little-endian */
+          f[5] = 1;                                                /* TCP */
+          f[6] = 80; f[7] = 0;                                     /* port 80, little-endian */
+          for (var i = 0; i < host.length; i++) f[8 + i] = host.charCodeAt(i);
+          try { ws.send(f); } catch (e) { finish(false); }
+          return;
+        }
+        if (stage === 1 && sid === 1) finish(true);                /* CONNECT accepted */
       };
       ws.onerror = function () { finish(false); };
       ws.onclose = function () { finish(false); };
@@ -2539,7 +2549,7 @@
     if (!t) return;
     var u = normUrl($('#urlbar').value);
     if (!u) return;
-    $('#urlbar').blur();
+    try { var ib = $('#urlbar').shadowRoot ? $('#urlbar').shadowRoot.querySelector('.input') : null; if (ib) ib.blur(); else $('#urlbar').blur(); } catch (e) {}
     navigate(t, u, { force: true });
   }
 
@@ -2913,8 +2923,7 @@
       var t = tabs.find(function (x) { return x.id === activeTabId; });
       if (t) navigate(t, 'zl://newtab', { force: true });
     });
-    $('#urlbar').addEventListener('keydown', function (e) { if (e.key === 'Enter') omniGo(); });
-    $('#urlbar').addEventListener('focus', function () { try { var ub = $('#urlbar'); if (ub.select) ub.select(); } catch (e) {} });
+    $('#urlbar').addEventListener('search', function () { omniGo(); });
     $('#logBtn').addEventListener('click', function () { sheetToggle($('#netlog')); });
     $('#nlClose').addEventListener('click', function () { sheetClose($('#netlog')); });
     $('#nlClear').addEventListener('click', function () { nlList.textContent = ''; nlCount = 0; stats.total = stats.cached = stats.blocked = 0; nlList.innerHTML = '<div id="netlogEmpty">No requests yet.</div>'; updateStats(); });
@@ -2936,8 +2945,7 @@
       var u = normUrl($('#ntSearch').value);
       if (t && u) { $('#ntSearch').value = ''; navigate(t, u, { force: true }); }
     }
-    $('#ntSearchWrap').addEventListener('submit', ntGo);
-    $('#ntSearch').addEventListener('keydown', function (e) { if (e.key === 'Enter') ntGo(e); });
+    $('#ntSearch').addEventListener('search', function (e) { ntGo(e); });
 
     document.addEventListener('keydown', function (e) {
       var mod = e.ctrlKey || e.metaKey;

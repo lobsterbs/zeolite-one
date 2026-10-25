@@ -31,7 +31,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const p = new URL(req.url, 'http://x').pathname;
     const send = (body, type) => { res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }); res.end(body); };
-    if (p === '/') return send('endpoints: /meta /raw/<key> /t/<key>/<n> /b64/<key>/<n> keys: ' + Object.keys(FILES).join(','), 'text/plain; charset=utf-8');
+    if (p === '/') return send('endpoints: /meta /raw/<key> /t/<key>/<n> /b64/<key>/<n> /s/<key>/<start>/<len> /md5/<key>/<start>/<len>', 'text/plain; charset=utf-8');
     if (p === '/meta') {
       const meta = {};
       for (const k of Object.keys(FILES)) {
@@ -54,6 +54,20 @@ const server = http.createServer(async (req, res) => {
       const b = await get(m[1]);
       const i = Number(m[2]);
       return send(b.toString('base64').slice(i * CHUNK, (i + 1) * CHUNK), 'text/plain; charset=utf-8');
+    }
+    if ((m = p.match(/^\/s\/([a-z0-9]+)\/(\d+)\/(\d+)$/))) {
+      const b = await get(m[1]);
+      const s = Number(m[2]);
+      const len = Math.min(Number(m[3]), 32000, b.length - s);
+      if (s < 0 || s >= b.length || len < 0) throw new Error('bad range');
+      return send(b.toString('utf8').substring(s, s + len), 'text/plain; charset=utf-8');
+    }
+    if ((m = p.match(/^\/md5\/([a-z0-9]+)\/(\d+)\/(\d+)$/))) {
+      const b = await get(m[1]);
+      const s = Number(m[2]);
+      const len = Math.min(Number(m[3]), b.length - s);
+      if (s < 0 || s >= b.length || len < 0) throw new Error('bad range');
+      return send(hash(b.subarray(s, s + len), 'md5'), 'text/plain; charset=utf-8');
     }
     res.writeHead(404); res.end('nope');
   } catch (e) { res.writeHead(500); res.end(String(e && e.message || e)); }

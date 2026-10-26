@@ -462,6 +462,9 @@
 
   var CFG = __ZL_CFG__;
   var BASE = CFG.base, ORIGIN = CFG.origin, UA = CFG.ua;
+  var REAL_HREF = (function () { try { var h = String(window.location.href); if (h) return h; } catch (e) {} try { var b = String(document.baseURI); if (b) return b; } catch (e2) {} try { return String(document.URL); } catch (e3) { return ''; } })();
+  var REAL_ORIG = '';
+  try { if (REAL_HREF.indexOf('blob:') === 0) REAL_ORIG = new URL(REAL_HREF).origin; } catch (e) {}
   var parent = window.top;   // nested proxied frames also talk to the engine host
   var rid = 0;
   var pending = new Map();
@@ -508,7 +511,11 @@
     if (/^(data:|blob:|javascript:|about:|mailto:|tel:|#)/i.test(u) || u === '') return u;
     var b = BASE;
     try { var tb = document.querySelector('base[href]'); if (tb) b = new URL(tb.getAttribute('href'), BASE).href; } catch (e) {}
-    try { return new URL(u, b).href; } catch (e) { return u; }
+    try {
+      var uu = new URL(u, b);
+      if (REAL_ORIG && uu.origin === REAL_ORIG) { try { uu = new URL(ORIGIN + uu.pathname + uu.search + uu.hash); } catch (e2) {} }
+      return uu.href;
+    } catch (e) { return u; }
   }
   function shouldSkip(u) {
     if (!CFG.block) return false;
@@ -545,6 +552,44 @@
       });
   }
   window.__zlReq = req;
+  /* dynamic import(): chunks missing from the frozen import map are built on demand by the engine */
+  var zlModMap = {}; /* module url -> Promise<{ns,url}>; blob URLs live in this frame context */
+  function zlLoadMod(abs, anc) {
+    if (zlModMap[abs]) return zlModMap[abs];
+    var pr = callParent('imp', { url: abs }, 120000).then(function (r) {
+      if (!r || r.e) { try { console.log('ZLIMPF ' + abs + ' ' + ((r && r.e) || 'no reply')); } catch (e5) {} throw new Error((r && r.e) || 'imp fail'); }
+      var deps = (r.d && r.d.deps) || [];
+      var st = anc ? new Set(anc) : new Set();
+      st.add(abs);
+      return Promise.all(deps.map(function (dp) {
+        if (st.has(dp)) { try { console.log('ZLCYC ' + dp); } catch (e9) {} return URL.createObjectURL(new Blob(['export {}'], { type: 'text/javascript' })); }
+        if (zlModMap[dp]) return zlModMap[dp].then(function (m) { return m.url; });
+        return zlLoadMod(dp, st).then(function (m) { return m.url; }, function (er) {
+          try { console.log('ZLDEPFAIL ' + dp + ' ' + ((er && er.message) || 'err')); } catch (e9) {}
+          return null;
+        });
+      })).then(function (depUrls) {
+        var out = String((r.d && r.d.src) || '');
+        for (var j = 0; j < deps.length; j++) {
+          if (depUrls[j]) out = out.split(JSON.stringify(deps[j])).join(JSON.stringify(depUrls[j]));
+        }
+        var mu = URL.createObjectURL(new Blob([out], { type: 'text/javascript' }));
+        return import(mu).then(function (ns) { return { ns: ns, url: mu }; }, function (er) {
+          try { console.log('ZLIMPFAIL ' + abs + ' ' + ((er && er.message) || 'err')); } catch (e5) {}
+          throw er;
+        });
+      });
+    }, function (er) { try { console.log('ZLIMPT ' + abs + ' ' + ((er && er.message) || 'timeout')); } catch (e5) {} throw er; });
+    zlModMap[abs] = pr;
+    pr.catch(function () { try { delete zlModMap[abs]; } catch (e7) {} });
+    return pr;
+  }
+  window.__zlImport = function (spec, base) {
+    var abs = resolve(spec);
+    try { if (base) abs = new URL(String(spec), base).href; } catch (e6) {}
+    if (!/^https?:/i.test(abs)) return import(spec);
+    return zlLoadMod(abs, null).then(function (m) { return m.ns; });
+  };
 
   /* ── storage: opaque origin throws on the real objects; shim and mirror to host ── */
   function makeStorage(seed, kind) {
@@ -602,6 +647,12 @@
 
   /* ── fetch: everything http(s) goes through the tunnel as a real stream ── */
   var OrigResponse = window.Response;
+  /* forbidden header names: fetch/XHR ignore these; the host sets Origin/Referer/Cookie itself */
+  var __zlForbiddenH = /^(origin|referer|cookie|cookie2|host|user-agent|connection|content-length|date|dnt|expect|keep-alive|te|trailer|transfer-encoding|upgrade|via|accept-charset|accept-encoding|access-control-request-headers|access-control-request-method|proxy-.*|sec-.*)$/i;
+  function __zlStripH(h) {
+    try { Object.keys(h).forEach(function (k) { if (__zlForbiddenH.test(k)) delete h[k]; }); } catch (e) {}
+    return h;
+  }
   var origFetch = window.fetch;
   window.fetch = function (input, init) {
     var url, method = 'GET', headers = {}, body = null;
@@ -624,7 +675,13 @@
 
     var bodyB64 = 0;
     var ready = Promise.resolve(null);
-    if (body && !(typeof body === 'string' || body instanceof URLSearchParams)) {
+    if (body instanceof URLSearchParams) {
+      var hasCT = false;
+      Object.keys(headers).forEach(function (k) { if (/^content-type$/i.test(k)) hasCT = true; });
+      if (!hasCT) headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+      body = body.toString();
+    }
+    if (body && typeof body !== 'string') {
       if (body instanceof FormData) body = new URLSearchParams(body).toString();
       if (body instanceof ArrayBuffer || ArrayBuffer.isView(body) || body instanceof Blob) {
         var p = body instanceof Blob ? body.arrayBuffer().then(function (b) { return new Uint8Array(b); })
@@ -655,6 +712,7 @@
           ondata: function (arr) { if (abortCtl && !nb) { try { abortCtl.enqueue(arr); } catch (e) {} } },
           onend: function () { if (abortCtl) { try { abortCtl.close(); } catch (e) {} } streamHandlers.delete(i); },
           onerror: function (msg) {
+            try { console.log('ZLFUE ' + url + ' ' + (msg || '')); } catch (e9) {}
             if (abortCtl) { try { abortCtl.error(new TypeError(msg || 'Failed to fetch')); } catch (e) {} }
             streamHandlers.delete(i);
           }
@@ -666,7 +724,8 @@
             streamHandlers.delete(i);
           });
         }
-        post({ t: 'str', i: i, url: url, opts: { method: method, headers: headers, body: body, bodyB64: bodyB64, redirect: init.redirect, credentials: init.credentials } });
+        headers = __zlStripH(headers);
+    post({ t: 'str', i: i, url: url, opts: { method: method, headers: headers, body: body, bodyB64: bodyB64, redirect: init.redirect, credentials: init.credentials } });
       });
     });
   };
@@ -742,7 +801,7 @@
       if (shouldSkip(url)) { status = 200; response = responseText = ''; setReady(4); fire('load'); fire('loadend'); return; }
       if (body instanceof FormData) body = new URLSearchParams(body).toString();
       setReady(1);
-      req(url, { method: method, headers: reqH, body: body }).then(function (r) {
+      req(url, { method: method, headers: __zlStripH(reqH), body: body }).then(function (r) {
         status = r.s || 200; respH = r.h || {};
         setReady(2); setReady(3);
         var arr = B64.decode(r.d || '');
@@ -805,14 +864,35 @@
   var fakeLoc = (function () {
     try { return new URL(BASE); } catch (e) { return new URL('https://invalid.invalid/'); }
   })();
+  /* The frame's real location is a blob: URL and blob URLs cannot serve as a
+     base for relative resolution. Redirect such resolutions to the page URL
+     (fakeLoc tracks SPA pushState/replaceState). */
+  try {
+    var __zlOrigURL = window.URL;
+    var __zlIsBlobBase = function (b) { try { return /^blob:/i.test(String(b)); } catch (e) { return false; } };
+    function ZLURL(u, b) {
+      if (b !== undefined && b !== null && __zlIsBlobBase(b)) {
+        try { return b === undefined ? new __zlOrigURL(u) : new __zlOrigURL(u, fakeLoc.href); } catch (e) {}
+      }
+      return b === undefined ? new __zlOrigURL(u) : new __zlOrigURL(u, b);
+    }
+    try { ZLURL.prototype = __zlOrigURL.prototype; } catch (e) {}
+    ['createObjectURL', 'revokeObjectURL'].forEach(function (k) { try { ZLURL[k] = __zlOrigURL[k]; } catch (e) {} });
+    if (__zlOrigURL.canParse) ZLURL.canParse = function (u, b) { if (b !== undefined && b !== null && __zlIsBlobBase(b)) { try { return __zlOrigURL.canParse(u, fakeLoc.href); } catch (e) {} } return b === undefined ? __zlOrigURL.canParse(u) : __zlOrigURL.canParse(u, b); };
+    window.URL = ZLURL;
+  } catch (e) {}
   var locProxy = new Proxy({}, {
     get: function (t, p) {
+      if (p === '__zlLoc$') return locProxy;
+      if (p === 'assign' || p === 'replace') return function (u) { navTo(u); };
+      if (p === 'reload') return function () { post({ t: 'rl' }); };
       if (p === 'href') return fakeLoc.href;
       if (p === 'toString' || p === Symbol.toPrimitive) return function () { return fakeLoc.href; };
       if (p in fakeLoc) { var v = fakeLoc[p]; return typeof v === 'function' ? v.bind(fakeLoc) : v; }
       return undefined;
     },
     set: function (t, p, v) {
+      if (p === '__zlLoc$') { navTo(v); return true; }
       if (p === 'href') navTo(v);
       else if (p === 'hash') { fakeLoc.hash = v; window.dispatchEvent(new HashChangeEvent('hashchange')); }
       else if (p === 'search') navTo(fakeLoc.origin + fakeLoc.pathname + v + fakeLoc.hash);
@@ -848,6 +928,52 @@
   try { Object.defineProperty(document, 'documentURI', { get: function () { return BASE; }, configurable: true }); } catch (e) {}
   try { Object.defineProperty(document, 'baseURI', { get: function () { try { var b = document.querySelector('base'); var h = b && b.getAttribute('href'); if (h && /^https?:/i.test(h)) return h; } catch (e) {} return BASE; }, configurable: true }); } catch (e) {}
   try { Object.defineProperty(document, 'domain', { get: function () { return fakeLoc.hostname; }, set: function () {}, configurable: true }); } catch (e) {}
+  /* hide the blob host: performance entry names and document.referrer leak it */
+  try { Object.defineProperty(document, 'referrer', { get: function () { return ''; }, configurable: true }); } catch (e) {}
+  try {
+    var __zlPerfGT = performance.getEntriesByType.bind(performance);
+    var __zlFixPerf = function (e) { try { if (e && typeof e.name === 'string' && e.name.indexOf('blob:') === 0) { Object.defineProperty(e, 'name', { get: function () { return BASE; }, configurable: true }); } } catch (er) {} return e; };
+    performance.getEntriesByType = function (t) { return __zlPerfGT(t).map(__zlFixPerf); };
+    if (performance.getEntries) { var __zlPerfAll = performance.getEntries.bind(performance); performance.getEntries = function () { return __zlPerfAll().map(__zlFixPerf); }; }
+    if (performance.getEntriesByName) { var __zlPerfGN = performance.getEntriesByName.bind(performance); performance.getEntriesByName = function (n, t) { return __zlPerfGN(n, t).map(__zlFixPerf); }; }
+  } catch (e) {}
+  try {
+    var __zlOrigPO = window.PerformanceObserver;
+    var __zlPO = function (cb) {
+      var wcb = function (list) { try { list.getEntries().forEach(__zlFixPerf); } catch (er) {} return cb(list); };
+      var o = new __zlOrigPO(wcb);
+      o.__zlOrigCb = cb;
+      return o;
+    };
+    __zlPO.prototype = __zlOrigPO.prototype;
+    if (__zlOrigPO.supportedEntryTypes) __zlPO.supportedEntryTypes = __zlOrigPO.supportedEntryTypes;
+    window.PerformanceObserver = __zlPO;
+  } catch (e) {}
+  /* spoof proxied script.src back to the original URL; the sentinel session-observer reads document.scripts */
+  try {
+    var __zlSrcSpoof = function () {
+      try {
+        var m = window.__ZL_SREV;
+        if (!m) return;
+        var ss = document.querySelectorAll('script[src]');
+        for (var si = 0; si < ss.length; si++) {
+          var sc = ss[si];
+          if (sc.__zlSpf) continue;
+          var raw = sc.getAttribute('src');
+          var k = raw && (raw.length + ':' + raw.slice(0, 48));
+          if (k && m[k] !== undefined) {
+            sc.__zlSpf = 1;
+            (function (el, orig) {
+              try { Object.defineProperty(el, 'src', { get: function () { return orig; }, set: function (v) { el.setAttribute('src', v); }, configurable: true }); } catch (e2) {}
+            })(sc, m[k]);
+          }
+        }
+      } catch (e) {}
+    };
+    __zlSrcSpoof();
+    document.addEventListener('DOMContentLoaded', __zlSrcSpoof);
+    setTimeout(__zlSrcSpoof, 0);
+  } catch (e) {}
   try { Object.defineProperty(window, 'origin', { get: function () { return ORIGIN; }, configurable: true }); } catch (e) {}
   /* AST-rewritten scripts access X.__zlLoc$; the safe accessor falls back for
      receivers whose named access throws (cross-origin windows). */
@@ -855,10 +981,12 @@
     Object.defineProperty(Object.prototype, '__zlLoc$', {
       get: function () {
         if (this === window || this === document) return locProxy;
+        try { if (this instanceof Location) return this; } catch (e) {}
         try { return this.location; } catch (e) { return undefined; }
       },
       set: function (v) {
         if (this === window || this === document) { try { locProxy.href = String(v); } catch (e) {} return true; }
+        try { if (this instanceof Location) { this.href = String(v); return true; } } catch (e) {}
         try { this.location = v; } catch (e) {}
         return true;
       },
@@ -866,23 +994,38 @@
     });
   } catch (e) {}
   window.__zlSafe = function (o) {
-    if (o == null) return o;
-    try { void o.__zlLoc$; return o; } catch (e) {}
-    return {
-      get __zlLoc$() { try { return o.location; } catch (e) { return undefined; } },
+    if (o == null) return {
+      get __zlLoc$() { return o; },
       set __zlLoc$(v) { try { o.location = v; } catch (e) {} }
+    };
+    if (o === locProxy) return o;
+    if (o === window || o === document) return locProxy;
+    try { if (o === window.location) return locProxy; } catch (e) {}
+    return {
+      get __zlLoc$() { return o; },
+      set __zlLoc$(v) { try { if (o && o.href !== undefined) o.href = String(v); else if (o && 'location' in o) o.location = v; } catch (e) {} }
     };
   };
 
   /* history: SPA URL updates reach the omnibox; in-frame back/forward go to the engine */
   try {
     var origPush = history.pushState, origReplace = history.replaceState;
+    /* real browsers throw SecurityError on cross-origin push/replaceState;
+       blob-derived URLs must never poison fakeLoc (it becomes Origin/Referer) */
+    var __zlHistURL = function (u) {
+      try {
+        var raw = new URL(String(u), BASE);
+        if (REAL_ORIG && raw.origin === REAL_ORIG) return null;
+        var uu = new URL(resolve(u), BASE); if (uu.origin === ORIGIN) return uu.href;
+      } catch (e) {}
+      return null;
+    };
     history.pushState = function (s, t2, u) {
-      if (u) { try { Object.assign(fakeLoc, new URL(resolve(u), BASE)); } catch (e) {} post({ t: 'uc', u: fakeLoc.href }); }
+      if (u) { var nu = __zlHistURL(u); if (nu) { fakeLoc.href = nu; post({ t: 'uc', u: fakeLoc.href }); } }
       return origPush.call(history, s, t2, null);
     };
     history.replaceState = function (s, t2, u) {
-      if (u) { try { Object.assign(fakeLoc, new URL(resolve(u), BASE)); } catch (e) {} post({ t: 'uc', u: fakeLoc.href, replace: 1 }); }
+      if (u) { var nu = __zlHistURL(u); if (nu) { fakeLoc.href = nu; post({ t: 'uc', u: fakeLoc.href, replace: 1 }); } }
       return origReplace.call(history, s, t2, null);
     };
     var origBack = history.back, origFwd = history.forward;
@@ -915,7 +1058,7 @@
     }, true);
 
     /* form submit and form.submit(): serialize into an engine navigation */
-    function submitForm(form) {
+    function submitForm(form, submitter) {
       var abs = form.getAttribute('action') ? resolve(form.getAttribute('action')) : BASE;
       if (!abs || !/^https?:/i.test(abs)) abs = BASE;
       var method = (form.getAttribute('method') || 'get').toUpperCase();
@@ -930,11 +1073,14 @@
           try {
             [].slice.call(form.elements).forEach(function (el) {
               if (!el.name || el.disabled) return;
+              if (el.type === 'button' || el.type === 'reset') return;
+              if ((el.type === 'submit' || el.type === 'image') && el !== submitter) return;
               if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) return;
               if (el.type === 'file') return;
               parts.push(encodeURIComponent(el.name) + '=' + encodeURIComponent(el.value));
             });
           } catch (e) {}
+          if (submitter && submitter.name && !submitter.disabled) parts.push(encodeURIComponent(submitter.name) + '=' + encodeURIComponent(submitter.value));
           if (parts.length) post({ t: 'n', u: abs, m: 'POST', b: parts.join('&'), ct: 'application/x-www-form-urlencoded', form: 1 });
           else if (fd) post({ t: 'n', u: abs, m: 'POST', b: new URLSearchParams(fd).toString(), ct: 'application/x-www-form-urlencoded', form: 1 });
           else post({ t: 'n', u: abs, m: 'POST', form: 1 });
@@ -947,11 +1093,27 @@
     }
     document.addEventListener('submit', function (e) {
       if (!e.target || e.target.tagName !== 'FORM') return;
+      if (e.defaultPrevented) return;  /* page JS handled it: let its flow run */
       e.preventDefault();
-      submitForm(e.target);
-    }, true);
+      submitForm(e.target, e.submitter);
+    }, false);
     try {
       HTMLFormElement.prototype.submit = function () { submitForm(this); };
+    } catch (e) {}
+    /* form.action reflects the document URL when unset: return the spoofed page URL, never the raw blob URL */
+    try {
+      var __zlFADesc = Object.getOwnPropertyDescriptor(HTMLFormElement.prototype, 'action');
+      if (__zlFADesc && __zlFADesc.get) {
+        Object.defineProperty(HTMLFormElement.prototype, 'action', {
+          get: function () {
+            var a = this.getAttribute('action');
+            if (a == null || a === '') return fakeLoc.href;
+            try { return new URL(a, fakeLoc.href).href; } catch (e) { return a; }
+          },
+          set: function (v) { try { origSetAttr.call(this, 'action', String(v)); } catch (e) {} },
+          configurable: true
+        });
+      }
     } catch (e) {}
 
     /* window.open: http(s) targets become a new tab in the shell */
@@ -1168,6 +1330,26 @@
     var ss2 = el2.getAttribute('srcset');
     if (ss2 && !/^(data:|blob:)/i.test(ss2)) { el2.removeAttribute('srcset'); el2.setAttribute('data-zl-srcset', ss2); }
   }
+  /* runtime-injected scripts: the browser would load remote srcs directly
+     (origin null -> CORS block); fetch them through the engine and swap in a blob URL */
+  function proxyRuntimeScript(el) {
+    try {
+      if (el.__zlSp) return;
+      var sv = el.getAttribute && el.getAttribute('src');
+      if (!sv || /^(data:|blob:)/i.test(sv)) { return; }
+      el.__zlSp = 1;
+      var abs = resolve(sv);
+      el.removeAttribute('src');
+      try { el.removeAttribute('crossorigin'); } catch (e2) {}
+      try { el.removeAttribute('integrity'); } catch (e2) {}
+      fetch(abs, { credentials: 'include' }).then(function (r) { return r.text(); }).then(function (code) {
+        try {
+          code = code.replace(/\bimport\s*\(\s*([\"'])([^\"'\n]+)\1\s*\)/g, function (m2, q2, spec2) { try { return '__zlImport(' + JSON.stringify(resolve(spec2)) + ', ' + JSON.stringify(abs) + ')'; } catch (e3) { return m2; } });
+        } catch (e4) {}
+        try { el.setAttribute('src', URL.createObjectURL(new Blob([code], { type: 'text/javascript' }))); } catch (e2) {}
+      }).catch(function () { try { el.dispatchEvent(new Event('error')); } catch (e2) {} });
+    } catch (e) {}
+  }
   /* mutation observer: promote parser-neutralized and JS-inserted media */
   var mo = new MutationObserver(function (muts) {
     for (var i = 0; i < muts.length; i++) {
@@ -1182,15 +1364,18 @@
             n.querySelectorAll('img,video,audio,source,embed,object').forEach(neutralizeEl);
           }
           if (n.tagName === 'IFRAME' && n.getAttribute('data-zl-frame')) proxyFrameEl(n);
+          if (n.tagName === 'SCRIPT') proxyRuntimeScript(n);
+          else if (n.querySelectorAll) { try { n.querySelectorAll('script[src]').forEach(proxyRuntimeScript); } catch (e2) {} }
           if (n.tagName === 'STYLE' && n.textContent && n.textContent.indexOf('url(') !== -1) rewriteStyleEl(n);
         });
       } else if (m.type === 'attributes') {
         var t2 = m.target;
         if (m.attributeName === 'data-zl-src' || m.attributeName === 'data-zl-srcset' || m.attributeName === 'data-zl-poster') promoteEl(t2);
+        if (m.attributeName === 'src' && t2.tagName === 'SCRIPT') proxyRuntimeScript(t2);
       }
     }
   });
-  function startObserver() { mo.observe(document.documentElement || document, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-zl-src', 'data-zl-srcset', 'data-zl-poster', 'data-zl-frame'] }); }
+  function startObserver() { mo.observe(document.documentElement || document, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-zl-src', 'data-zl-srcset', 'data-zl-poster', 'data-zl-frame', 'src'] }); }
   if (document.documentElement) startObserver();
   else document.addEventListener('readystatechange', startObserver, { once: true });
   /* boot sweep: the renderer neutralized these before the observer started */
@@ -3499,12 +3684,22 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     if (!h['user-agent']) h['user-agent'] = String(getS('ua', DEFAULT_UA));
     if (!h['accept']) h['accept'] = acceptFor(o.dest);
     if (!h['accept-language']) h['accept-language'] = 'en-US,en;q=0.9';
+    var hM0 = (o.method || 'GET').toUpperCase();
+    if (o.dest === 'document' && hM0 !== 'GET' && hM0 !== 'HEAD' && (o.body != null || o.bodyBytes != null) && !h['content-type']) h['content-type'] = o.ct || 'application/x-www-form-urlencoded;charset=UTF-8';
     h['sec-fetch-dest'] = o.dest || 'empty';
     h['sec-fetch-mode'] = o.dest === 'document' ? 'navigate' : 'cors';
-    h['sec-fetch-site'] = 'cross-site';
+    var fsSite = o.dest === 'document' ? 'none' : 'same-origin';
+    if (o.referrer) {
+      try { fsSite = new URL(url).origin === new URL(o.referrer).origin ? 'same-origin' : 'cross-site'; } catch (e) { fsSite = 'cross-site'; }
+    }
+    h['sec-fetch-site'] = fsSite;
     if (o.dest === 'document') h['sec-fetch-user'] = '?1';
     if (o.referrer) h['referer'] = o.referrer;
     else if (o.dest === 'document') delete h['referer'];
+    var hM = (o.method || 'GET').toUpperCase();
+    if (hM !== 'GET' && hM !== 'HEAD' && !h['origin']) {
+      try { h['origin'] = new URL(o.referrer || url).origin; } catch (e) {}
+    }
     var ck = cookieStringFor(url);
     if (ck) h['cookie'] = ck;
     return h;
@@ -3548,7 +3743,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     var cur = url, method = (o.method || 'GET').toUpperCase(), body = o.bodyBytes || o.body, hops = 0;
     try {
       while (true) {
-        var resp = await rawFetch(cur, { headers: o.headers, dest: o.dest, referrer: o.referrer, method: method, body: body }, ctl.signal);
+        var resp = await rawFetch(cur, { headers: o.headers, dest: o.dest, referrer: o.referrer, method: method, body: body, ct: o.ct }, ctl.signal);
         var raw = resp.raw_headers || [];
         var hmap = headerMap(raw);
         cookiesFromResponse(cur, raw);
@@ -3626,26 +3821,44 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
   }
 
   /* ────────────────────────── JS rewriting (acorn, host side) ────────────────────────── */
+  function zlP(p) {
+    if (p && p.type === 'Identifier' && p.name === 'location') shadow = true;
+    else if (p && p.type === 'ObjectPattern' && p.properties) {
+      for (var zi = 0; zi < p.properties.length; zi++) {
+        var zp = p.properties[zi];
+        if (zp && zp.key && zp.key.name === 'location' && (zp.shorthand || (zp.value && zp.value.type === 'Identifier' && zp.value.name === 'location'))) { shadow = true; break; }
+      }
+    }
+  }
   function rewriteLocationRefs(src) {
     if (!window.acorn || !src || !src.length || src.length > 4000000) return src;
     if (src.indexOf('location') === -1) return src;
     var walk = window.acorn.walk || window.walk;
     if (!walk || !walk.full) return src;
     var ast;
-    try { ast = acorn.parse(src, { ecmaVersion: 'latest', allowReturnOutsideFunction: true }); } catch (e) { return src; }
+    try { ast = acorn.parse(src, { ecmaVersion: 'latest', allowReturnOutsideFunction: true }); }
+    catch (e) { try { ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module' }); } catch (e2) { return src; } }
     var edits = [], shadow = false;
+    var ZL_LP = ['href', 'origin', 'protocol', 'host', 'hostname', 'port', 'pathname', 'search', 'hash', 'assign', 'replace', 'reload', 'toString'];
     walk.full(ast, function (node) {
       switch (node.type) {
         case 'VariableDeclarator':
           if (node.id && node.id.type === 'Identifier' && node.id.name === 'location') shadow = true;
+          else if (node.id && node.id.type === 'ObjectPattern' && node.id.properties) {
+            for (var pi = 0; pi < node.id.properties.length; pi++) {
+              var pp = node.id.properties[pi];
+              if (pp && pp.key && pp.key.name === 'location' && (pp.shorthand || (pp.value && pp.value.type === 'Identifier' && pp.value.name === 'location'))) { shadow = true; break; }
+            }
+          }
           break;
         case 'FunctionDeclaration':
         case 'ClassDeclaration':
           if (node.id && node.id.name === 'location') shadow = true;
+          if (node.type === 'FunctionDeclaration' && node.params) node.params.forEach(zlP);
           break;
         case 'FunctionExpression':
         case 'ArrowFunctionExpression':
-          if (node.params) node.params.forEach(function (p) { if (p.type === 'Identifier' && p.name === 'location') shadow = true; });
+          if (node.params) node.params.forEach(zlP);
           break;
         case 'CatchClause':
           if (node.param && node.param.type === 'Identifier' && node.param.name === 'location') shadow = true;
@@ -3653,6 +3866,8 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
         case 'MemberExpression':
           if (!node.computed && node.property.type === 'Identifier' && node.property.name === 'location' &&
             node.object.type !== 'Super' && node.object.type !== 'ImportExpression') edits.push(node);
+          else if (!node.computed && node.property.type === 'Identifier' && ZL_LP.indexOf(node.property.name) >= 0 &&
+            node.object.type === 'Identifier' && node.object.name === 'location') edits.push(node.object);
           break;
       }
     });
@@ -3663,7 +3878,8 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       var n = edits[i];
       if (n.end > lastStart) continue;
       lastStart = n.start;
-      out = out.slice(0, n.start) + '__zlSafe(' + out.slice(n.start, n.end) + ').__zlLoc$' + out.slice(n.end);
+      if (n.type === 'Identifier') out = out.slice(0, n.start) + '__zlSafe(window).__zlLoc$' + out.slice(n.end);
+      else out = out.slice(0, n.start) + '__zlSafe(' + out.slice(n.start, n.end) + ').__zlLoc$' + out.slice(n.end);
     }
     return out;
   }
@@ -3680,10 +3896,66 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       } catch (e) {}
       return spec;
     }
-    code = code.replace(/\bimport\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g, function (m, q, spec) { return 'import(' + JSON.stringify(absOf(spec)) + ')'; });
-    code = code.replace(/\bimport\s+(["'])([^"'\n]+)\1/g, function (m, q, spec) { return 'import ' + JSON.stringify(absOf(spec)); });
-    code = code.replace(/((?:\bimport\b|\bexport\b)[\s\S]*?\bfrom\s*)(["'])([^"'\n]+)\2/g, function (m, pre, q, spec) { return pre + JSON.stringify(absOf(spec)); });
+    function absOf2(spec) {
+      if (/^(data:|blob:)/i.test(spec)) return spec;
+      try {
+        var u = new URL(spec, baseUrl).href;
+        if (/^https?:/i.test(u)) return u;
+      } catch (e) {}
+      return spec;
+    }
+    var ac = (function () {
+      try {
+        var w = window.acorn, wk = (w && (w.walk || window.walk)) || null;
+        if (!w || !wk || !wk.full) return null;
+        var ast = w.parse(code, { ecmaVersion: 'latest', sourceType: 'module' });
+        var edits = [];
+        wk.full(ast, function (node) {
+          var lit = null;
+          var dyn = false;
+          if (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration' || node.type === 'ExportNamedDeclaration') lit = node.source;
+          else if (node.type === 'ImportExpression') { lit = node.source; dyn = true; }
+          else if (node.type === 'CallExpression' && node.callee && node.callee.type === 'Import') { lit = node.arguments && node.arguments[0]; dyn = true; }
+          if (dyn && lit) {
+            if (lit.type === 'Literal' && typeof lit.value === 'string') {
+              var abs2 = absOf2(lit.value);
+              edits.push({ s: node.start, e: node.end, v: '__zlImport(' + (abs2 !== lit.value ? JSON.stringify(abs2) : code.slice(lit.start, lit.end)) + ', ' + JSON.stringify(baseUrl) + ')' });
+            } else {
+              edits.push({ s: node.start, e: node.end, v: '__zlImport(' + code.slice(lit.start, lit.end) + ', ' + JSON.stringify(baseUrl) + ')' });
+            }
+            return;
+          }
+          if (!lit || lit.type !== 'Literal' || typeof lit.value !== 'string') return;
+          var abs = absOf(lit.value);
+          if (abs === lit.value) return;
+          edits.push({ s: lit.start, e: lit.end, v: JSON.stringify(abs) });
+        });
+        if (!edits.length) return code;
+        edits.sort(function (a, b) { return b.s - a.s; });
+        var out = code;
+        for (var i = 0; i < edits.length; i++) { var n = edits[i]; out = out.slice(0, n.s) + n.v + out.slice(n.e); }
+        return out;
+      } catch (e) { return null; }
+    })();
+    if (ac !== null) code = ac;
+    else {
+      code = code.replace(/\bimport\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g, function (m, q, spec) { return '__zlImport(' + JSON.stringify(absOf(spec)) + ')'; });
+      code = code.replace(/\bimport\s+(["'])([^"'\n]+)\1/g, function (m, q, spec) { return 'import ' + JSON.stringify(absOf(spec)); });
+      code = code.replace(/((?:\bimport\b|\bexport\b)[\s\S]*?\bfrom\s*)(["'])([^"'\n]+)\2/g, function (m, pre, q, spec) { return pre + JSON.stringify(absOf(spec)); });
+    }
+    if (/^https?:/i.test(baseUrl)) code = code.replace(/\bimport\.meta\.url\b/g, JSON.stringify(baseUrl));
     return { code: code, deps: deps };
+  }
+  function rewriteClassicDeps(code, baseUrl) {
+    if (!/^https?:/i.test(baseUrl)) return code;
+    function absOf(spec) {
+      if (/^(data:|blob:)/i.test(spec)) return spec;
+      try { var u = new URL(spec, baseUrl).href; if (/^https?:/i.test(u)) return u; } catch (e) {}
+      return spec;
+    }
+    code = code.replace(/\bimport\s*\(\s*([\"'])([^\"'\n]+)\1\s*\)/g, function (m, q, spec) { return '__zlImport(' + JSON.stringify(absOf(spec)) + ')'; });
+    code = code.replace(/\bimport\.meta\.url\b/g, JSON.stringify(baseUrl));
+    return code;
   }
   var JS_DATA = 'data:text/javascript;charset=utf-8;base64,';
   async function proxyEsmModule(abs, imap, depth) {
@@ -3699,13 +3971,59 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     var text = b64ToStr(r.d || '');
     var t = transformModuleSource(text, abs);
     await Promise.all(t.deps.map(function (dep) { return proxyEsmModule(dep, imap, depth + 1).catch(function () {}); }));
-    var url = JS_DATA + strToB64(t.code);
+    var url = JS_DATA + strToB64(rewriteLocationRefs(t.code));
     imap[abs] = url;
     esmMeta.set(abs, { url: url, deps: t.deps });
     return url;
   }
+  /* on-demand standalone modules for __zlImport: one blob URL per module, static deps rewritten to dep blob URLs (no source duplication) */
+  var standaloneCache = new Map();
+  var modLoading = new Map();
+  async function zlModFetch(abs) {
+    var lastErr = null;
+    for (var att = 0; att < 3; att++) {
+      try { return await queueFetch(abs, { priority: 1, dest: 'script', logType: 'js', cacheKey: 'js:' + abs }); }
+      catch (er) { lastErr = er; try { console.log('ZLDEPFAIL-RETRY ' + abs + ' ' + ((er && er.message) || 'err')); } catch (e13) {} }
+    }
+    throw lastErr || new Error('fetch failed');
+  }
+  async function buildStandaloneModule(abs, depth, stack) {
+    if (standaloneCache.has(abs)) return standaloneCache.get(abs);
+    var cached = esmMeta.get(abs);
+    if (cached) return cached.url;
+    if (modLoading.has(abs)) {
+      if (stack && stack.has(abs)) return null;
+      return modLoading.get(abs);
+    }
+    if ((depth || 0) > 64) return null;
+    var pr = (async function () {
+      var r = await zlModFetch(abs);
+      var t = transformModuleSource(b64ToStr(r.d || ''), abs);
+      var st = stack ? new Set(stack) : new Set();
+      st.add(abs);
+      var pairs = await Promise.all(t.deps.map(function (dep) {
+        return buildStandaloneModule(dep, (depth || 0) + 1, st).then(function (du) { return [dep, du]; }, function (er) {
+          try { console.log('ZLDEPFAIL ' + dep + ' ' + ((er && er.message) || 'err')); } catch (e9) {}
+          return [dep, null];
+        });
+      }));
+      var out = t.code;
+      for (var j = 0; j < pairs.length; j++) {
+        if (pairs[j][1]) out = out.split(JSON.stringify(pairs[j][0])).join(JSON.stringify(pairs[j][1]));
+      }
+      out = rewriteLocationRefs(out);
+      var u2 = null;
+      try { u2 = URL.createObjectURL(new Blob([out], { type: 'application/javascript' })); } catch (e11) { u2 = JS_DATA + strToB64(out); }
+      standaloneCache.set(abs, u2);
+      modLoading.delete(abs);
+      return u2;
+    })();
+    modLoading.set(abs, pr);
+    pr.catch(function () { try { modLoading.delete(abs); } catch (e14) {} });
+    return pr;
+  }
 
-  /* ────────────────────────── document renderer ────────────────────────── */
+  /* document renderer */
   var fidSeq = 0, navSeq = 0, tabSeq = 0;
   var tabs = [], activeTabId = null;
   var fidTab = new Map();  // frame id -> tab id
@@ -3808,6 +4126,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
 
     /* scripts: classic through the tunnel + AST rewrite; modules to data: URLs */
     var imap = Object.create(null);
+    var imraw = {};
     var jobs = [];
     var jsCache = new Map();
     doc.querySelectorAll('script').forEach(function (s) {
@@ -3815,7 +4134,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       var src = s.getAttribute('src');
       var isModule = st === 'module';
       if (st === 'importmap') {
-        try { var m = JSON.parse(s.textContent || '{}'); if (m.imports) Object.assign(imap, m.imports); } catch (e) {}
+        try { var m = JSON.parse(s.textContent || '{}'); if (m.imports) Object.keys(m.imports).forEach(function (ik) { imraw[ik] = m.imports[ik]; }); } catch (e) {}
         s.remove(); return;
       }
       var skipType = st && st !== 'module' && !/javascript|ecmascript|^text\/jsx$|^module$/i.test(st);
@@ -3833,7 +4152,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
           var j = queueFetch(abs, { priority: 1, dest: 'script', logType: 'js', cacheKey: 'js:' + abs, referrer: effBase })
             .then(function (r) {
               if (!r.d) throw new Error('empty');
-              var u = JS_DATA + strToB64(rewriteLocationRefs(b64ToStr(r.d)));
+              var u = JS_DATA + strToB64(rewriteLocationRefs(rewriteClassicDeps(b64ToStr(r.d), abs)));
               jsCache.set(abs, u);
               s.setAttribute('src', u);
             }).catch(function () { netLog('js', abs, 0, 0, 0, 'err'); });
@@ -3843,15 +4162,24 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
         if (isModule) {
           var t = transformModuleSource(s.textContent, effBase);
           var dj = Promise.all(t.deps.map(function (dep) { return proxyEsmModule(dep, imap, 0).catch(function () {}); }))
-            .then(function () { s.textContent = t.code; });
+            .then(function () { s.textContent = rewriteLocationRefs(t.code); });
           jobs.push(dj);
         } else {
-          s.textContent = rewriteLocationRefs(s.textContent);
+          s.textContent = rewriteLocationRefs(rewriteClassicDeps(s.textContent, effBase));
         }
       }
     });
-    if (Object.keys(imap).length) {
-      var im = doc.createElement('script');
+    Object.keys(imraw).forEach(function (k) {
+      var v = imraw[k];
+      if (typeof v !== 'string' || /\/$/.test(k) || /^(data:|blob:)/i.test(v)) return;
+      var A;
+      try { A = new URL(v, effBase).href; } catch (e) { return; }
+      if (!/^https?:/i.test(A)) return;
+      jobs.push(proxyEsmModule(A, imap, 0).then(function (D) { if (D) imap[k] = D; }).catch(function () {}));
+    });
+    var im = null;
+    if (Object.keys(imap).length || Object.keys(imraw).length) {
+      im = doc.createElement('script');
       im.type = 'importmap';
       im.textContent = JSON.stringify({ imports: imap });
       var head = doc.head;
@@ -3869,6 +4197,18 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     });
 
     await Promise.all(jobs);
+    if (im) { try { im.textContent = JSON.stringify({ imports: imap }); } catch (e) {} }
+
+    /* reverse map: short data:-src key -> original URL; runtime spoofs script.src back so page/sentinel code reads native URLs */
+    var srev = {};
+    var skey = function (u) { return u.length + ':' + u.slice(0, 48); };
+    Object.keys(imap).forEach(function (k) { if (imap[k]) srev[skey(imap[k])] = k; });
+    jsCache.forEach(function (u, abs) { srev[skey(u)] = abs; });
+    if (Object.keys(srev).length) {
+      var srEl = doc.createElement('script');
+      srEl.textContent = 'window.__ZL_SREV=' + JSON.stringify(srev) + ';';
+      (doc.head || doc.documentElement).appendChild(srEl);
+    }
 
     var title = (doc.title || '').trim();
     var iconUrl = '';
@@ -4093,7 +4433,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       if (!transportReady) await initTransport();
       var res = await queueFetch(url, {
         priority: 0, dest: 'document', logType: 'doc', timeoutMs: 45000,
-        method: o.method, body: o.body, signal: ac.signal, redirect: 'follow'
+        method: o.method, body: o.body, ct: o.ct, signal: ac.signal, redirect: 'follow'
       });
       if (t.navToken !== token) return;
       var disp = (res.h && res.h['content-disposition']) || '';
@@ -4346,6 +4686,17 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
         });
         break;
       }
+      case 'imp':
+        (async function () {
+          try {
+            var rr = await zlModFetch(d.url);
+            var tt = transformModuleSource(b64ToStr(rr.d || ''), d.url);
+            replyTo(source, { t: 'r', f: d.f, i: d.i, d: { src: rewriteLocationRefs(tt.code), deps: tt.deps } });
+          } catch (err) {
+            replyTo(source, { t: 'r', f: d.f, i: d.i, e: (err && err.message) || 'engine error' });
+          }
+        })();
+        break;
       case 'str':
         streamFetch(d, source);
         break;
@@ -4356,7 +4707,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       }
       case 'qjs':
         queueFetch(d.url, { priority: 1, dest: 'script', logType: 'js', cacheKey: 'js:' + d.url, referrer: tab ? tab.url : undefined }).then(function (r) {
-          var code = b64ToStr(r.d || '');
+          var code = rewriteClassicDeps(b64ToStr(r.d || ''), d.url);
           replyTo(source, { t: 'r', f: d.f, i: d.i, d: JS_DATA + strToB64(rewriteLocationRefs(code)) });
         }).catch(function (err) {
           replyTo(source, { t: 'r', f: d.f, i: d.i, e: (err && err.message) || 'engine error' });

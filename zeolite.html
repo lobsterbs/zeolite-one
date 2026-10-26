@@ -1646,6 +1646,19 @@
       return 0;
     };
     navigator.geolocation.clearWatch = function () {};
+  try {
+    /* zlfix3: sandboxed frames cannot read navigator.serviceWorker (the getter itself throws SecurityError);
+       expose a benign container so page code that touches it keeps running */
+    var zlSW = {
+      controller: null,
+      register: function () { return Promise.reject(new Error('service workers unavailable')); },
+      getRegistration: function () { return Promise.resolve(undefined); },
+      getRegistrations: function () { return Promise.resolve([]); },
+      addEventListener: function () {},
+      removeEventListener: function () {}
+    };
+    Object.defineProperty(window.navigator, 'serviceWorker', { configurable: true, get: function () { return zlSW; } });
+  } catch (e) {}
   } catch (e) {}
 
   /* document.write in a proxied frame would wipe the runtime; honest no-op */
@@ -1669,6 +1682,7 @@
     if (e.source !== parent) return;
     var d = e.data;
     if (!d) return;
+    if (d.f !== undefined && d.f !== CFG.fid) return; /* zlfix1: drop msgs aimed at another doc of this iframe */
     if (d.t === 'r') {
       var p = pending.get(d.i);
       if (p) { pending.delete(d.i); clearTimeout(p.tm); d.e ? p.rj(new Error(d.e)) : p.rs(d); }
@@ -4122,7 +4136,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     var fid = ++fidSeq;
     fidTab.set(fid, tab.id);
     tab.fids.add(fid);
-    injectRuntime(doc, buildCfg(effBase, fid));
+    var __zlRT = injectRuntime(doc, buildCfg(effBase, fid));
 
     /* scripts: classic through the tunnel + AST rewrite; modules to data: URLs */
     var imap = Object.create(null);
@@ -4130,6 +4144,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     var jobs = [];
     var jsCache = new Map();
     doc.querySelectorAll('script').forEach(function (s) {
+      if (s === __zlRT) return; /* zlfix2: never rewrite injected runtime */
       var st = (s.getAttribute('type') || '').toLowerCase();
       var src = s.getAttribute('src');
       var isModule = st === 'module';

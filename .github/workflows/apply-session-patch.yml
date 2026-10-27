@@ -2,7 +2,7 @@ name: apply-session-patch
 on:
   push:
     paths:
-      - 'patches/session.txt'
+      - 'patches/session.diff'
   workflow_dispatch:
 permissions:
   contents: write
@@ -15,7 +15,7 @@ jobs:
         run: |
           set -e
           cp zeolite.html zeolite-base.html
-          patch -p0 --batch < patches/session.txt
+          patch -p0 --batch < patches/session.diff
           rm -f zeolite-base.html.orig zeolite-engine.html
           mv zeolite-base.html zeolite.html
           echo "a8d3f2bb215449fbe505d5079a9fc080  zeolite.html" | md5sum -c -

@@ -4,7 +4,7 @@
      });
      var refresh = null;
      /* meta refresh (parsed from the raw source before doc-level removal) */
--    var refSrc = htmlText.match(/<meta[]>]+http-equiv=["']?refresh["']?[^>]*content=["']?([^"';]+)(?:; ?url=([^"'>]+))?/i);
+-    var refSrc = htmlText.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]*content=["']?([^"';]+)(?:; ?url=([^"'>]+))?/i);
 -    if (refSrc) {
 -      refresh = { delay: parseInt(refSrc[1], 10) || 0, url: refSrc[2] ? new URL(refSrc[2], effBase).href : finalUrl };
 -      if (refresh.delay > 6) refresh = null;

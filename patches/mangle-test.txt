@@ -1,3 +1,0 @@
-A[^>]B [^abc] C
-D[^x]E [^>]F line2
-caret ^ alone ok

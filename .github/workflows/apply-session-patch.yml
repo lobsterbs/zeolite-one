@@ -18,9 +18,9 @@ jobs:
           patch -p0 --batch < patches/session.diff
           rm -f zeolite-base.html.orig zeolite-engine.html
           mv zeolite-base.html zeolite.html
-          echo "7fcfbdcf876deb009a501d163a542d89  zeolite.html" | md5sum -c -
+          echo "a8d3f2bb215449fbe505d5079a9fc080  zeolite.html" | md5sum -c -
           git config user.name "zl-bot"
           git config user.email "bot@users.noreply.github.com"
           git add zeolite.html
-          git commit -m "engine: site-compat fixes - SSE byte decode, sendBeacon tunnel, clipboard write, navigator UA data alignment"
+          git commit -m "engine: meta refresh attribute-order fix (google.com/ai)"
           git push

@@ -18,9 +18,9 @@ jobs:
           patch -p0 --batch < patches/session.diff
           rm -f zeolite-base.html.orig zeolite-engine.html
           mv zeolite-base.html zeolite.html
-          echo "a8d3f2bb215449fbe505d5079a9fc080  zeolite.html" | md5sum -c -
+          echo "002c103bbeafbba2d4d0a64b15165b66  zeolite.html" | md5sum -c -
           git config user.name "zl-bot"
           git config user.email "bot@users.noreply.github.com"
           git add zeolite.html
-          git commit -m "engine: meta refresh attribute-order fix (google.com/ai)"
+          git commit -m "engine: home page tagline, launch version check, css setter receiver fix"
           git push

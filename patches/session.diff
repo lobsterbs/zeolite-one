@@ -1,29 +1,85 @@
 --- zeolite-base.html
 +++ zeolite-base.html
-@@ -4302,10 +4302,22 @@
-     });
-     var refresh = null;
-     /* meta refresh (parsed from the raw source before doc-level removal) */
--    var refSrc = htmlText.match(/<meta[^>]+http-equiv=["']?refresh["']?[^>]*content=["']?([^"';]+)(?:; ?url=([^"'>]+))?/i);
--    if (refSrc) {
--      refresh = { delay: parseInt(refSrc[1], 10) || 0, url: refSrc[2] ? new URL(refSrc[2], effBase).href : finalUrl };
--      if (refresh.delay > 6) refresh = null;
-+    /* zlfix16: meta refresh parse must accept any attribute order (Google writes content before http-equiv) */
-+    var __zmrC = null;
-+    (htmlText.match(/<meta[^>]*>/gi) || []).forEach(function (mt) {
-+      if (!/http-equiv\s*=["']?refresh/i.test(mt)) return;
-+      var cm = mt.match(/content\s*=["']?([^"'>]+)/i);
-+      if (cm) __zmrC = cm[1];
-+    });
-+    if (__zmrC) {
-+      var __zmrD = parseInt((__zmrC.split(";")[0] || "").replace(/[^0-9]/g, ""), 10) || 0;
-+      var __zmrU = null;
-+      var um = __zmrC.match(/url\s*=\s*(.+)$/i);
-+      if (um) __zmrU = um[1].replace(/^["']+|["']+$/g, "").trim();
-+      if (__zmrU || __zmrD > 0) {
-+        refresh = { delay: __zmrD, url: __zmrU ? new URL(__zmrU, effBase).href : finalUrl };
-+        if (refresh.delay > 6) refresh = null;
-+      }
+@@ -233,6 +233,7 @@
+         #ntClock { display: flex; flex-direction: column; gap: 4px; }
+         #ntTime { font: var(--zl-ts-display-font); color: var(--md-sys-color-on-surface); letter-spacing: -.02em; }
+         #ntDate { font: var(--zl-ts-body-medium-font); color: var(--md-sys-color-on-surface-variant); text-transform: capitalize; }
++        #ntTag { font: var(--zl-ts-headline-font); color: var(--md-sys-color-primary); }
+         #ntSearchWrap { width: 100%; display: flex; }
+         #ntSearch { flex: 1; width: auto; }
+         #ntFaves { width: 100%; text-align: left; }
+@@ -252,7 +253,7 @@
+         .faverow img { width: 20px; height: 20px; border-radius: 4px; object-fit: contain; flex: none; }
+         .faverow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+         .faverow .fdel { flex: none; }
+-        #ntEngine { text-align: center; font: var(--zl-ts-body-small-font); color: var(--md-sys-color-outline); }
++        #ntEngine, #ntVer { text-align: center; font: var(--zl-ts-body-small-font); color: var(--md-sys-color-outline); }
+ 
+         /* ââ network log drawer (md-side-sheet) ââ */
+         #netlog { display: flex; flex-direction: column; --md-side-sheet-width: min(420px, 90vw); }
+@@ -354,6 +355,7 @@
+                     <div id="ntTime">00:00</div>
+                     <div id="ntDate"></div>
+                 </div>
++                <div id="ntTag">You deserve that top grade</div>
+                 <div id="ntSearchWrap">
+                     <md-search-bar id="ntSearch" placeholder="Search privately through the tunnel" aria-label="Search"></md-search-bar>
+                 </div>
+@@ -362,6 +364,7 @@
+                     <div id="faveGrid"></div>
+                 </div>
+                 <div id="ntEngine"></div>
++                <div id="ntVer"></div>
+             </div>
+         </section>
+     </main>
+@@ -1692,7 +1695,7 @@
+     Object.defineProperty(CSSStyleDeclaration.prototype, prop, {
+       get: d.get,
+       set: function (val) {
+-        if (val && typeof val === 'string' && val.indexOf('url(') !== -1) rewriteCss(val, BASE, 0).then(function (r) { d.set.call(this, r); }).catch(function () { d.set.call(this, val); });
++        var __zlCssSelf = this; if (val && typeof val === 'string' && val.indexOf('url(') !== -1) rewriteCss(val, BASE, 0).then(function (r) { d.set.call(__zlCssSelf, r); }).catch(function () { d.set.call(__zlCssSelf, val); });
+         else d.set.call(this, val);
+       },
+       configurable: true
+@@ -1703,7 +1706,7 @@
+     if (d && d.set) Object.defineProperty(CSSStyleDeclaration.prototype, 'cssText', {
+       get: d.get,
+       set: function (val) {
+-        if (val && typeof val === 'string' && val.indexOf('url(') !== -1) rewriteCss(val, BASE, 0).then(function (r) { d.set.call(this, r); }).catch(function () { d.set.call(this, val); });
++        var __zlCssSelf = this; if (val && typeof val === 'string' && val.indexOf('url(') !== -1) rewriteCss(val, BASE, 0).then(function (r) { d.set.call(__zlCssSelf, r); }).catch(function () { d.set.call(__zlCssSelf, val); });
+         else d.set.call(this, val);
+       },
+       configurable: true
+@@ -5210,6 +5213,23 @@
+       wasmOk = true;
      }
-     doc.querySelectorAll('[integrity]').forEach(function (el) { el.removeAttribute('integrity'); });
-     doc.querySelectorAll('[crossorigin]').forEach(function (el) { el.removeAttribute('crossorigin'); });
+   }
++  var ZL_VERSION = 'zl-ship9';
++  var ZL_VERURL = 'https://raw.githubusercontent.com/lobsterbs/zeolite-one/main/version.json';
++  function verLabel(txt) { var v = $('#ntVer'); if (v) v.textContent = txt; }
++  function checkVersion() {
++    verLabel('Zeolite ' + ZL_VERSION);
++    var done = false;
++    var fin = function (msg) { if (!done) { done = true; verLabel(msg); } };
++    var to = setTimeout(function () { fin('Zeolite ' + ZL_VERSION + ' - version check timed out'); }, 10000);
++    fetch(ZL_VERURL, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); }).then(function (j) {
++      clearTimeout(to);
++      if (j && j.version && j.version !== ZL_VERSION) {
++        fin('Update available: ' + j.version + ' - newest at github.com/lobsterbs/zeolite-one');
++        toast('Update available: ' + j.version);
++      } else if (j && j.version) fin('Zeolite ' + ZL_VERSION + ' - up to date');
++      else fin('Zeolite ' + ZL_VERSION + ' - version info unreadable');
++    }).catch(function () { clearTimeout(to); fin('Zeolite ' + ZL_VERSION + ' - version check failed'); });
++  }
+   function bootStage(msg) {
+     var el = $('#bootMsg');
+     if (el) el.textContent = msg;
+@@ -5220,6 +5240,7 @@
+     tickClock();
+     clockTm = setInterval(tickClock, 15000);
+     engineLabel();
++    checkVersion();
+     var t = makeTab('zl://newtab');
+     activate(t.id);
+     var prog = $('#progress');

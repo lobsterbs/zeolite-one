@@ -18,9 +18,9 @@ jobs:
           patch -p0 --batch < patches/session.diff
           rm -f zeolite-base.html.orig zeolite-engine.html
           mv zeolite-base.html zeolite.html
-          echo "aa991e3bf1f6ed11bc59fc416108cb08  zeolite.html" | md5sum -c -
+          echo "ceb24efd8e4fdf2680cfe180118cdbee  zeolite.html" | md5sum -c -
           git config user.name "zl-bot"
           git config user.email "bot@users.noreply.github.com"
           git add zeolite.html
-          git commit -m "engine: foreign-receiver location writes through tunnel (zlfix18), gointospace relay, ship10"
+          git commit -m "engine: rewrite bare location value reads (zlfix19), ship11"
           git push

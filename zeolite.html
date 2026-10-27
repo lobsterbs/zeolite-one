@@ -1045,7 +1045,7 @@
 
     /* click capture: anchor nav goes to the engine; pdf turns into a download */
     document.addEventListener('click', function (e) {
-      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (e.defaultPrevented || e.button !== 0) return;
       var a = e.target && e.target.closest ? e.target.closest('a[data-zl-href], a[href]') : null;
       if (!a) return;
       var href = a.getAttribute('data-zl-href') || a.getAttribute('href');
@@ -1054,7 +1054,7 @@
       try { abs = resolve(href); } catch (e2) { return; }
       e.preventDefault();
       if (/\.pdf(\?|#|$)/i.test(new URL(abs).pathname)) { post({ t: 'dl', u: abs }); return; }
-      post({ t: 'n', u: abs });
+      post({ t: 'n', u: abs, newtab: (e.metaKey || e.ctrlKey) ? 1 : 0 });
     }, true);
 
     /* form submit and form.submit(): serialize into an engine navigation */
@@ -1067,7 +1067,7 @@
         var fd = null;
         try { fd = new FormData(form); } catch (e) {}
         if (fd && enc.indexOf('multipart') !== -1) {
-          post({ t: 'n', u: abs, m: 'POST', b: new URLSearchParams(fd).toString(), ct: 'application/x-www-form-urlencoded', form: 1 });
+          submitMultipart(fd, abs);
         } else {
           var parts = [];
           try {
@@ -1090,6 +1090,53 @@
         try { qs = new URLSearchParams(new FormData(form)).toString(); } catch (e) {}
         post({ t: 'n', u: abs.split('?')[0] + (qs ? '?' + qs : ''), form: 1 });
       }
+    }
+    /* zlfix8: multipart forms get a real multipart body; files ride through the tunnel as b64 */
+    function submitMultipart(fd, abs) {
+      var bd = "----zl" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      var CRLF = String.fromCharCode(13, 10);
+      var enc2 = null;
+      try { enc2 = new TextEncoder(); } catch (e9) {}
+      function toBytes(str) {
+        if (enc2) return enc2.encode(str);
+        var out = [];
+        for (var i = 0; i < str.length; i++) {
+          var c = str.charCodeAt(i);
+          if (c < 128) out.push(c);
+          else if (c < 2048) out.push(192 | (c >> 6), 128 | (c & 63));
+          else out.push(224 | (c >> 12), 128 | ((c >> 6) & 63), 128 | (c & 63));
+        }
+        return new Uint8Array(out);
+      }
+      var entries = [];
+      try { fd.forEach(function (v, k) { entries.push([k, v]); }); } catch (e10) {}
+      Promise.all(entries.map(function (kv) {
+        var k = kv[0], v = kv[1];
+        if (v && typeof v !== "string") {
+          var fname = String(v.name || "blob").split("").map(function (ch) {
+            return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "." || ch === "-" || ch === "_" ? ch : "_";
+          }).join("");
+          var head = "--" + bd + CRLF + "Content-Disposition: form-data; name=" + String.fromCharCode(34) + k + String.fromCharCode(34) + "; filename=" + String.fromCharCode(34) + fname + String.fromCharCode(34) + CRLF + "Content-Type: " + (v.type || "application/octet-stream") + CRLF + CRLF;
+          return (v.arrayBuffer ? v.arrayBuffer() : Promise.reject(new Error("unreadable"))).then(function (ab) {
+            return [toBytes(head), new Uint8Array(ab), toBytes(CRLF)];
+          }, function () {
+            return [toBytes("--" + bd + CRLF + "Content-Disposition: form-data; name=" + String.fromCharCode(34) + k + String.fromCharCode(34) + CRLF + CRLF + CRLF)];
+          });
+        }
+        return Promise.resolve([toBytes("--" + bd + CRLF + "Content-Disposition: form-data; name=" + String.fromCharCode(34) + k + String.fromCharCode(34) + CRLF + CRLF + v + CRLF)]);
+      })).then(function (list) {
+        var flat = [];
+        for (var i = 0; i < list.length; i++) flat.push.apply(flat, list[i]);
+        flat.push(toBytes("--" + bd + "--" + CRLF));
+        var total = 0;
+        flat.forEach(function (u) { total += u.length; });
+        var bodyBytes = new Uint8Array(total);
+        var off = 0;
+        flat.forEach(function (u) { bodyBytes.set(u, off); off += u.length; });
+        post({ t: 'n', u: abs, m: 'POST', b: B64.encode(bodyBytes), ct: 'multipart/form-data; boundary=' + bd, b64: 1, form: 1 });
+      }).catch(function () {
+        post({ t: 'n', u: abs, m: 'POST', b: new URLSearchParams(fd).toString(), ct: 'application/x-www-form-urlencoded', form: 1 });
+      });
     }
     document.addEventListener('submit', function (e) {
       if (!e.target || e.target.tagName !== 'FORM') return;
@@ -1658,6 +1705,79 @@
       removeEventListener: function () {}
     };
     Object.defineProperty(window.navigator, 'serviceWorker', { configurable: true, get: function () { return zlSW; } });
+  } catch (e) {}
+  try {
+    /* zlfix4: window.caches throws SecurityError in sandboxed frames; benign container */
+    var zlCachesObj = {
+      match: function () { return Promise.resolve(undefined); },
+      put: function () { return Promise.resolve(); },
+      add: function () { return Promise.reject(new Error("cache unavailable")); },
+      addAll: function () { return Promise.reject(new Error("cache unavailable")); },
+      delete: function () { return Promise.resolve(false); },
+      keys: function () { return Promise.resolve([]); }
+    };
+    var zlCaches = {
+      open: function () { return Promise.resolve(zlCachesObj); },
+      has: function () { return Promise.resolve(false); },
+      delete: function () { return Promise.resolve(true); },
+      keys: function () { return Promise.resolve([]); },
+      match: function () { return Promise.resolve(undefined); }
+    };
+    Object.defineProperty(window, "caches", { configurable: true, get: function () { return zlCaches; } });
+  } catch (e) {}
+  try {
+    /* zlfix5: indexedDB.open throws SecurityError in sandboxed frames; fail-soft factory */
+    var zlIDBFail = function () {
+      var rq = { readyState: "pending", result: undefined, error: null, source: null, transaction: null, onsuccess: null, onerror: null, onblocked: null, onupgradeneeded: null };
+      setTimeout(function () {
+        rq.readyState = "done";
+        rq.error = new Error("indexeddb unavailable in sandbox");
+        if (typeof rq.onerror === "function") rq.onerror({ target: rq, error: rq.error, type: "error" });
+      }, 0);
+      return rq;
+    };
+    var zlIDB = {
+      open: function () { return zlIDBFail(); },
+      deleteDatabase: function () { return zlIDBFail(); },
+      databases: function () { return Promise.resolve([]); },
+      cmp: function (a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+    };
+    try { window.indexedDB.open("zl-probe"); } catch (e2) { Object.defineProperty(window, "indexedDB", { configurable: true, value: zlIDB }); }
+  } catch (e) {}
+  try {
+    /* zlfix6: SharedWorker construction throws in opaque origins; benign no-op */
+    var zlSharedWorkerCtor = function () {
+      return { port: { postMessage: function () {}, start: function () {}, close: function () {}, onmessage: null, onerror: null, addEventListener: function (t2, fn2) { if (t2 === "message") this.onmessage = fn2; }, removeEventListener: function () {} } };
+    };
+    window.SharedWorker = zlSharedWorkerCtor;
+  } catch (e) {}
+  try {
+    /* zlfix7: navigator.storage.estimate throws in sandboxed frames; try native, fall back benign */
+    if (navigator.storage) {
+      var zlStg = navigator.storage, zlEst = zlStg.estimate, zlPer = zlStg.persist;
+      try { Object.defineProperty(zlStg, "estimate", { configurable: true, value: function () { try { var zp = zlEst.call(zlStg); if (zp && typeof zp.then === 'function') return zp.then(null, function () { return { usage: 0, quota: 0 }; }); return zp; } catch (e3) { return Promise.resolve({ usage: 0, quota: 0 }); } } }); } catch (e4) {}
+      try { Object.defineProperty(zlStg, "persist", { configurable: true, value: function () { try { var zp2 = zlPer.call(zlStg); if (zp2 && typeof zp2.then === 'function') return zp2.then(null, function () { return false; }); return zp2; } catch (e5) { return Promise.resolve(false); } } }); } catch (e6) {}
+    }
+  } catch (e) {}
+  try {
+    /* zlfix9: WebRTC would bypass the tunnel and expose the real network path; honest no-support */
+    var zlRTCPeerConnection = function () {
+      var rj = function () { return Promise.reject(new Error("WebRTC is disabled in the tunnel")); };
+      return {
+        createDataChannel: function () { return { close: function () {}, send: function () {}, label: "", readyState: "closed", bufferedAmount: 0, onopen: null, onmessage: null, onclose: null, onerror: null }; },
+        createOffer: rj, createAnswer: rj,
+        setLocalDescription: rj, setRemoteDescription: rj, addIceCandidate: rj,
+        restartIce: function () {}, close: function () {},
+        addEventListener: function () {}, removeEventListener: function () {}, dispatchEvent: function () { return false; },
+        getStats: function () { return Promise.resolve(new Map()); },
+        getSenders: function () { return []; }, getReceivers: function () { return []; }, getTransceivers: function () { return []; },
+        localDescription: null, remoteDescription: null, currentLocalDescription: null, currentRemoteDescription: null,
+        iceConnectionState: "closed", connectionState: "closed", signalingState: "closed", iceGatheringState: "complete",
+        onicecandidate: null, ontrack: null, onconnectionstatechange: null, oniceconnectionstatechange: null, onicegatheringstatechange: null, onnegotiationneeded: null
+      };
+    };
+    window.RTCPeerConnection = zlRTCPeerConnection;
+    try { window.webkitRTCPeerConnection = zlRTCPeerConnection; } catch (e7) {}
   } catch (e) {}
   } catch (e) {}
 
@@ -4675,7 +4795,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
     var d = e.data;
     if (!d || typeof d !== 'object') return;
     var source = e.source;
-    var tab = tabByFid(d.f) || tabBySource(source);
+    var tab = tabBySource(source) || (d.f !== undefined ? tabByFid(d.f) : null);
     switch (d.t) {
       case 'ready':
         break;
@@ -4744,12 +4864,14 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
         break;
       case 'n':
         if (!tab) break;
+        var zb = d.b;
+        if (d.b64 && d.b) { try { zb = b64ToU8(d.b); } catch (e) {} }
         if (d.newtab) {
           var nt = makeTab(d.u);
           activate(nt.id);
-          navigate(nt, d.u, { method: d.m, body: d.b, ct: d.ct });
+          navigate(nt, d.u, { method: d.m, body: zb, ct: d.ct });
         } else {
-          navigate(tab, d.u, { method: d.m, body: d.b, ct: d.ct, force: true });
+          navigate(tab, d.u, { method: d.m, body: zb, ct: d.ct, force: true });
         }
         break;
       case 'rl':

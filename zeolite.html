@@ -4056,7 +4056,8 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
               var pp = node.id.properties[pi];
               if (pp && pp.key && pp.key.name === 'location' && (pp.shorthand || (pp.value && pp.value.type === 'Identifier' && pp.value.name === 'location'))) { shadow = true; break; }
             }
-          }
+          }          if (node.init && node.init.type === 'Identifier' && node.init.name === 'location') edits.push(node.init);
+
           break;
         case 'FunctionDeclaration':
         case 'ClassDeclaration':
@@ -4069,6 +4070,16 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
           break;
         case 'CatchClause':
           if (node.param && node.param.type === 'Identifier' && node.param.name === 'location') shadow = true;
+          break;
+        case 'AssignmentExpression':
+          if (node.right && node.right.type === 'Identifier' && node.right.name === 'location') edits.push(node.right);
+          break;
+        case 'ReturnStatement':
+          if (node.argument && node.argument.type === 'Identifier' && node.argument.name === 'location') edits.push(node.argument);
+          break;
+        case 'CallExpression':
+        case 'NewExpression':
+          if (node.arguments) { for (var ci = 0; ci < node.arguments.length; ci++) { var ca = node.arguments[ci]; if (ca && ca.type === 'Identifier' && ca.name === 'location') edits.push(ca); } }
           break;
         case 'MemberExpression':
           if (!node.computed && node.property.type === 'Identifier' && node.property.name === 'location' &&
@@ -5213,7 +5224,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       wasmOk = true;
     }
   }
-  var ZL_VERSION = 'zl-ship10';
+  var ZL_VERSION = 'zl-ship11';
   var ZL_VERURL = 'https://raw.githubusercontent.com/lobsterbs/zeolite-one/main/version.json';
   function verLabel(txt) { var v = $('#ntVer'); if (v) v.textContent = txt; }
   function checkVersion() {

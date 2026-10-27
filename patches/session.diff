@@ -1,38 +1,122 @@
---- zeolite-base.html	2026-10-27 18:16:55.793155834 +0000
-+++ zeolite-base.html	2026-10-27 18:16:41.712960914 +0000
-@@ -4056,7 +4056,8 @@
-               var pp = node.id.properties[pi];
-               if (pp && pp.key && pp.key.name === 'location' && (pp.shorthand || (pp.value && pp.value.type === 'Identifier' && pp.value.name === 'location'))) { shadow = true; break; }
-             }
--          }
-+          }          if (node.init && node.init.type === 'Identifier' && node.init.name === 'location') edits.push(node.init);
-+
-           break;
-         case 'FunctionDeclaration':
-         case 'ClassDeclaration':
-@@ -4070,6 +4071,16 @@
-         case 'CatchClause':
-           if (node.param && node.param.type === 'Identifier' && node.param.name === 'location') shadow = true;
-           break;
-+        case 'AssignmentExpression':
-+          if (node.right && node.right.type === 'Identifier' && node.right.name === 'location') edits.push(node.right);
-+          break;
-+        case 'ReturnStatement':
-+          if (node.argument && node.argument.type === 'Identifier' && node.argument.name === 'location') edits.push(node.argument);
-+          break;
-+        case 'CallExpression':
-+        case 'NewExpression':
-+          if (node.arguments) { for (var ci = 0; ci < node.arguments.length; ci++) { var ca = node.arguments[ci]; if (ca && ca.type === 'Identifier' && ca.name === 'location') edits.push(ca); } }
-+          break;
-         case 'MemberExpression':
-           if (!node.computed && node.property.type === 'Identifier' && node.property.name === 'location' &&
-             node.object.type !== 'Super' && node.object.type !== 'ImportExpression') edits.push(node);
-@@ -5213,7 +5224,7 @@
+--- zeolite-base.html
++++ zeolite-base.html
+@@ -374,6 +374,7 @@
+         <div id="netlogHead">
+             <svg class="msr" style="color:var(--md-sys-color-primary)" viewBox="0 -960 960 960" fill="currentColor" aria-hidden="true"><path d="M140-240q-24 0-42-18t-18-42v-480q0-24 18-42t42-18h680q24 0 42 18t18 42v480q0 24-18 42t-42 18H652l39 38q5 5 7 10.54 2 5.55 2 11.46v30q0 12.75-8.62 21.37Q682.75-120 670-120H290q-12.75 0-21.37-8.63Q260-137.25 260-150v-31q0-5.57 2-10.78 2-5.22 7-10.22l38-38H140Zm0-60h680v-480H140v480Zm0 0v-480 480Z"/></svg>
+             <h3>Requests</h3>
++            <md-icon-button id="nlExport" icon="download" title="Export diagnostics (.kdl)" aria-label="Export diagnostics"></md-icon-button>
+             <md-icon-button id="nlClear" icon="delete" title="Clear" aria-label="Clear log"></md-icon-button>
+             <md-icon-button id="nlClose" icon="close" title="Close" aria-label="Close log"></md-icon-button>
+         </div>
+@@ -3593,6 +3594,7 @@
+   }
+ 
+   var stats = { total: 0, cached: 0, blocked: 0 };
++  var __zlDiag = { t0: Date.now(), errs: [] };
+   var NL_ICONS = {
+     doc: 'travel_explore', js: 'code', css: 'palette', img: 'image', fetch: 'sync_alt',
+     ws: 'podcasts', pf: 'picture_in_picture', dl: 'download', block: 'block',
+@@ -3606,6 +3608,7 @@
+     if (nlCount > 500) { var first = nlList.firstElementChild; if (first) first.remove(); }
+     nlCount++;
+     stats.total++;
++    if (statCls === 'err' || statCls === 'block') { try { if (__zlDiag.errs.length < 150) __zlDiag.errs.push({ ty: String(type), cl: String(statCls), u: String(url == null ? '' : url).slice(0, 240), s: String(status == null ? '' : status).slice(0, 40), t: Math.round((Date.now() - __zlDiag.t0) / 100) / 10 }); } catch (er) {} }
+     var row = document.createElement('div');
+     row.className = 'nlrow';
+     var st = document.createElement('span');
+@@ -5161,10 +5164,19 @@
+       var t = tabs.find(function (x) { return x.id === activeTabId; });
+       if (t) navigate(t, 'zl://newtab', { force: true });
+     });
+-    $('#urlbar').addEventListener('search', function () { omniGo(); });
++    $('#urlbar').addEventListener('search', function () {
++      var dv = $('#urlbar').value.trim().toLowerCase();
++      if (dv === 'diag' || dv === 'diagnostics') {
++        try { var ib = $('#urlbar').shadowRoot ? $('#urlbar').shadowRoot.querySelector('.input') : null; if (ib) ib.value = ''; else $('#urlbar').value = ''; } catch (e) {}
++        zlExportDiag();
++        return;
++      }
++      omniGo();
++    });
+     $('#logBtn').addEventListener('click', function () { sheetToggle($('#netlog')); });
+     $('#nlClose').addEventListener('click', function () { sheetClose($('#netlog')); });
+     $('#nlClear').addEventListener('click', function () { nlList.textContent = ''; nlCount = 0; stats.total = stats.cached = stats.blocked = 0; nlList.innerHTML = '<div id="netlogEmpty">No requests yet.</div>'; updateStats(); });
++    $('#nlExport').addEventListener('click', function () { zlExportDiag(); });
+ 
+     /* the md-menu trigger opens it; items close it on select */
+     $('#mmNewTab').addEventListener('click', function () { var t = makeTab('zl://newtab'); activate(t.id); });
+@@ -5224,8 +5236,73 @@
        wasmOk = true;
      }
    }
--  var ZL_VERSION = 'zl-ship10';
-+  var ZL_VERSION = 'zl-ship11';
+-  var ZL_VERSION = 'zl-ship11';
++  var ZL_VERSION = 'zl-ship12';
    var ZL_VERURL = 'https://raw.githubusercontent.com/lobsterbs/zeolite-one/main/version.json';
++  function zlKdlStr() {
++    var Q = String.fromCharCode(34);
++    var BS = String.fromCharCode(92);
++    var NL = String.fromCharCode(10);
++    function esc(v) {
++      v = String(v == null ? '' : v);
++      var o = '';
++      for (var i = 0; i < v.length; i++) {
++        var c = v.charCodeAt(i);
++        if (c === 34) o += BS + Q;
++        else if (c === 92) o += BS + BS;
++        else if (c === 10) o += BS + 'n';
++        else if (c === 13 || c < 32) o += '';
++        else o += v.charAt(i);
++      }
++      return o;
++    }
++    var out = '';
++    out += 'zeolite-diagnostics version=' + Q + ZL_VERSION + Q + NL;
++    out += '  exported=' + Q + new Date().toISOString() + Q + NL;
++    out += '  uptime_sec=' + Math.round((Date.now() - __zlDiag.t0) / 1000) + NL;
++    out += 'meta' + NL;
++    out += '  user_agent=' + Q + esc(navigator.userAgent) + Q + NL;
++    out += '  href=' + Q + esc(location.href) + Q + NL;
++    out += 'ui' + NL;
++    var ub = null, ubi = null, tabCount = 0, rc = null, vl = null, ns = null;
++    try { ub = $('#urlbar'); } catch (e) {}
++    try { ubi = ub && ub.shadowRoot ? ub.shadowRoot.querySelector('.input') : null; } catch (e) {}
++    try { tabCount = tabs ? tabs.length : 0; } catch (e) { try { tabCount = document.querySelectorAll('.tab').length; } catch (e2) { tabCount = -1; } }
++    try { rc = $('#relayChip'); } catch (e) {}
++    try { vl = $('#ntVer'); } catch (e) {}
++    try { ns = $('#ntSearch'); } catch (e) {}
++    out += '  urlbar_present=' + (!!ub) + NL;
++    out += '  urlbar_input_present=' + (!!ubi) + NL;
++    out += '  tabs_count=' + tabCount + NL;
++    out += '  relay_chip=' + (rc ? (rc.classList.contains('on') ? 'on' : 'off') : 'missing') + NL;
++    out += '  newtab_search_present=' + (!!ns) + NL;
++    out += '  version_line=' + Q + esc(vl ? vl.textContent : '') + Q + NL;
++    out += 'tunnel' + NL;
++    out += '  requests=' + stats.total + NL;
++    out += '  cached=' + stats.cached + NL;
++    out += '  blocked=' + stats.blocked + NL;
++    out += '  errors=' + __zlDiag.errs.length + NL;
++    out += 'events ' + __zlDiag.errs.length + NL;
++    for (var i = 0; i < __zlDiag.errs.length; i++) {
++      var ev = __zlDiag.errs[i];
++      out += '  err class=' + Q + esc(ev.cl) + Q + ' type=' + Q + esc(ev.ty) + Q + ' status=' + Q + esc(ev.s) + Q + ' at_s=' + ev.t + ' ' + Q + esc(ev.u) + Q + NL;
++    }
++    return out;
++  }
++  function zlExportDiag() {
++    try {
++      var blob = new Blob([zlKdlStr()], { type: 'text/kdl' });
++      var a = document.createElement('a');
++      a.href = URL.createObjectURL(blob);
++      a.download = 'zeolite-diagnostics.kdl';
++      document.body.appendChild(a);
++      a.click();
++      setTimeout(function () { try { URL.revokeObjectURL(a.href); a.remove(); } catch (e) {} }, 8000);
++      verLabel('Zeolite ' + ZL_VERSION + ' - diagnostics exported');
++      zlToast2('Diagnostics exported: zeolite-diagnostics.kdl', 'ok');
++    } catch (e) {
++      try { zlToast2('Diag export failed: ' + (e && e.message ? e.message : e), 'err'); } catch (e2) {}
++    }
++  }
    function verLabel(txt) { var v = $('#ntVer'); if (v) v.textContent = txt; }
    function checkVersion() {
+     verLabel('Zeolite ' + ZL_VERSION);

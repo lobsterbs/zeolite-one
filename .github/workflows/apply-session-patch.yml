@@ -18,9 +18,9 @@ jobs:
           patch -p0 --batch < patches/session.diff
           rm -f zeolite-base.html.orig zeolite-engine.html
           mv zeolite-base.html zeolite.html
-          echo "ceb24efd8e4fdf2680cfe180118cdbee  zeolite.html" | md5sum -c -
+          echo "a9789a54626338da0c357c10e96397c6  zeolite.html" | md5sum -c -
           git config user.name "zl-bot"
           git config user.email "bot@users.noreply.github.com"
           git add zeolite.html
-          git commit -m "engine: rewrite bare location value reads (zlfix19), ship11"
+          git commit -m "engine: diagnostics export zlfix20, ship12"
           git push

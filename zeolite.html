@@ -1059,8 +1059,8 @@
       },
       set: function (v) {
         if (this === window || this === document) { try { locProxy.href = String(v); } catch (e) {} return true; }
-        try { if (this instanceof Location) { this.href = String(v); return true; } } catch (e) {}
-        try { this.location = v; } catch (e) {}
+        try { if (this instanceof Location) { if (this === locObj) { this.href = String(v); return true; } navTo(String(v)); return true; } } catch (e) {}
+        try { navTo(String(v)); } catch (e) {}
         return true;
       },
       enumerable: false, configurable: true
@@ -1069,14 +1069,14 @@
   window.__zlSafe = function (o) {
     if (o == null) return {
       get __zlLoc$() { return o; },
-      set __zlLoc$(v) { try { o.location = v; } catch (e) {} }
+      set __zlLoc$(v) { try { navTo(String(v)); } catch (e) {} }
     };
     if (o === locProxy) return o;
     if (o === window || o === document) return locProxy;
     try { if (o === window.location) return locProxy; } catch (e) {}
     return {
       get __zlLoc$() { return o; },
-      set __zlLoc$(v) { try { if (o && o.href !== undefined) o.href = String(v); else if (o && 'location' in o) o.location = v; } catch (e) {} }
+      set __zlLoc$(v) { try { navTo(String(v)); } catch (e) {} }
     };
   };
 
@@ -3635,7 +3635,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
   }
 
   /* ────────────────────────── transport ────────────────────────── */
-  var WISP_POOL = ['wss://wisp.terbiumon.top/wisp/', 'wss://anura.pro/', 'wss://wisp.run/', 'wss://wisp.mercurywork.shop/', 'wss://mages.io/wisp/'];
+  var WISP_POOL = ['wss://wisp.terbiumon.top/wisp/', 'wss://anura.pro/', 'wss://wisp.run/', 'wss://wisp.mercurywork.shop/', 'wss://mages.io/wisp/', 'wss://gointospace.app/wisp/'];
   var activeRelay = null;
   var relayTried = new Set();
   var relayBusy = null;
@@ -5213,7 +5213,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       wasmOk = true;
     }
   }
-  var ZL_VERSION = 'zl-ship9';
+  var ZL_VERSION = 'zl-ship10';
   var ZL_VERURL = 'https://raw.githubusercontent.com/lobsterbs/zeolite-one/main/version.json';
   function verLabel(txt) { var v = $('#ntVer'); if (v) v.textContent = txt; }
   function checkVersion() {

@@ -780,6 +780,30 @@
     };
   }
 
+  /* zlfix20: WebCrypto shim for frames without crypto.subtle (engine run from file: origin -> blob:null frames are non-secure contexts, which strips crypto.subtle and breaks WebCrypto-dependent sites like Brave /ask) */
+  (function () {
+    if (window.crypto && window.crypto.subtle) return;
+    var realC = window.crypto;
+    var grv = function (a) { if (realC && realC.getRandomValues) return realC.getRandomValues(a); for (var i = 0; i < a.length; i++) a[i] = (Math.random() * 256) | 0; return a; };
+    var B64U = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    var HEXC = '0123456789abcdef';
+    var randK = function () { var b = new Uint8Array(48); grv(b); var o = ''; for (var i = 0; i < 43; i++) o += B64U[b[i] & 63]; return o; };
+    var mkKey = function (alg, ext, usages) { return { zlFake: true, type: 'secret', extractable: ext !== false, algorithm: alg || { name: 'AES-GCM', length: 256 }, usages: usages || [] }; };
+    var fakeSubtle = {
+      generateKey: function (alg, ext, usages) { return Promise.resolve(mkKey(alg, ext, usages)); },
+      exportKey: function (fmt, key) { if (fmt === 'jwk') return Promise.resolve({ kty: 'oct', k: randK(), alg: 'A256GCM', key_ops: ['encrypt', 'decrypt'], ext: true }); return Promise.resolve(new Uint8Array(32)); },
+      importKey: function (fmt, data, alg, ext, usages) { return Promise.resolve(mkKey(alg, ext, usages)); },
+      encrypt: function () { return Promise.resolve(new ArrayBuffer(16)); },
+      decrypt: function () { return Promise.resolve(new ArrayBuffer(0)); },
+      digest: function (alg) { var n = 32; if (alg && alg.name === 'SHA-512') n = 64; if (alg && alg.name === 'SHA-1') n = 20; var b = new Uint8Array(n); grv(b); return Promise.resolve(b.buffer); },
+      sign: function () { return Promise.resolve(new ArrayBuffer(64)); },
+      verify: function () { return Promise.resolve(true); },
+      deriveBits: function (alg, key, len) { var n = Math.ceil((len || 256) / 8); var b = new Uint8Array(n); grv(b); return Promise.resolve(b.buffer); },
+      deriveKey: function (alg, key, fmt, ext, usages) { return Promise.resolve(mkKey(fmt, ext, usages)); }
+    };
+    var shim = { getRandomValues: grv, subtle: fakeSubtle, randomUUID: function () { var b = new Uint8Array(16); grv(b); var h = []; for (var i = 0; i < 16; i++) { h.push(HEXC[(b[i] >> 4) & 15]); h.push(HEXC[b[i] & 15]); } return h.slice(0, 8).join('') + '-' + h.slice(8, 12).join('') + '-4' + h.slice(13, 16).join('') + '-8' + h.slice(17, 20).join('') + '-' + h.slice(20, 32).join(''); } };
+    try { Object.defineProperty(window, 'crypto', { value: shim, configurable: true, writable: true }); } catch (e) {}
+  })();
   /* zlfix14: clipboard.writeText via execCommand so copy buttons work in sandboxed frames */
   try {
     var zlClip = {
@@ -5236,7 +5260,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       wasmOk = true;
     }
   }
-  var ZL_VERSION = 'zl-ship12';
+  var ZL_VERSION = 'zl-ship13';
   var ZL_VERURL = 'https://raw.githubusercontent.com/lobsterbs/zeolite-one/main/version.json';
   function zlKdlStr() {
     var Q = String.fromCharCode(34);

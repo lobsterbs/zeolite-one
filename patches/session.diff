@@ -1,6 +1,106 @@
 --- zeolite-base.html
 +++ zeolite-base.html
-@@ -4393,8 +4393,20 @@
+@@ -641,6 +641,34 @@
+     Object.defineProperty(navigator, 'userAgent', { get: function () { return UA; }, configurable: true });
+     Object.defineProperty(navigator, 'appVersion', { get: function () { return String(UA).replace(/^Mozilla\//, ''); }, configurable: true });
+   } catch (e) {}
++  /* zlfix12: navigator.platform + userAgentData must match the spoofed UA, not the host */
++  var zlPlat = /Android/i.test(UA) ? 'Linux armv8l' : /iPhone|iPad|iPod/i.test(UA) ? 'iPhone' : /Windows/i.test(UA) ? 'Win32' : /Mac OS X/i.test(UA) ? 'MacIntel' : /Linux/i.test(UA) ? 'Linux x86_64' : navigator.platform;
++  try { Object.defineProperty(navigator, 'platform', { get: function () { return zlPlat; }, configurable: true }); } catch (e) {}
++  var zlUAV = (UA.match(/Chrome\/([0-9]+)/) || [])[1] || '130';
++  var zlUADPlat = /Android/i.test(UA) ? 'Android' : /iPhone|iPad/i.test(UA) ? 'iOS' : /Windows/i.test(UA) ? 'Windows' : /Mac OS X/i.test(UA) ? 'macOS' : /Linux/i.test(UA) ? 'Linux' : 'unknown';
++  var zlUADMob = /Android|iPhone|iPad|Mobile/i.test(UA);
++  var zlBrands = [
++    { brand: 'Not A(Brand', version: '99' },
++    { brand: 'Chromium', version: zlUAV },
++    { brand: 'Google Chrome', version: zlUAV }
++  ];
++  try {
++    Object.defineProperty(navigator, 'userAgentData', {
++      get: function () {
++        return {
++          brands: zlBrands, platform: zlUADPlat, mobile: zlUADMob,
++          getHighEntropyValues: function (hints) {
++            var zlFull = { architecture: 'x86', bitness: '64', model: '', wow64: false, uaFullVersion: zlUAV + '.0.0.0',
++            fullVersionList: zlBrands.map(function (b) { return { brand: b.brand, version: b.version + '.0.0.0' }; }),
++            platformVersion: /Windows NT 10/i.test(UA) ? '10.0.0' : /Mac OS X 10_15/i.test(UA) ? '10.15.7' : /Android/i.test(UA) ? '13.0.0' : '13.0.0' };
++            var out = {};
++            (hints || []).forEach(function (h) { if (h in zlFull) out[h] = zlFull[h]; });
++            return Promise.resolve(out);
++          }
++        };
++      }, configurable: true
++    });
++  } catch (e) {}
+ 
+   /* framework asset-path hints: webpack/Next resolve against the real origin */
+   try { window.__webpack_public_path__ = ORIGIN + '/'; } catch (e) {}
+@@ -730,6 +758,47 @@
+     });
+   };
+ 
++  /* zlfix13: sendBeacon rides the tunnel fetch, never the native network (leak fix) */
++  if (navigator.sendBeacon) {
++    navigator.sendBeacon = function (u, data) {
++      try {
++        var url = resolve(u);
++        if (!/^https?:/i.test(url)) return false;
++        var ct = '';
++        if (data instanceof Blob) ct = data.type || 'text/plain;charset=UTF-8';
++        else if (data instanceof FormData || data instanceof URLSearchParams) ct = 'application/x-www-form-urlencoded;charset=UTF-8';
++        else if (typeof data === 'string') ct = 'text/plain;charset=UTF-8';
++        var opts = { method: 'POST', body: data === undefined ? null : data, keepalive: true };
++        if (ct) opts.headers = { 'Content-Type': ct };
++        window.fetch(url, opts).catch(function () {});
++        return true;
++      } catch (e) { return false; }
++    };
++  }
++
++  /* zlfix14: clipboard.writeText via execCommand so copy buttons work in sandboxed frames */
++  try {
++    var zlClip = {
++      writeText: function (text) {
++        return new Promise(function (rs, rj) {
++          try {
++            var ta = document.createElement('textarea');
++            ta.value = String(text);
++            ta.setAttribute('readonly', '');
++            ta.style.cssText = 'position:fixed;top:-999px;left:0;opacity:0;';
++            document.body.appendChild(ta);
++            ta.focus(); ta.select();
++            var ok = document.execCommand('copy');
++            ta.remove();
++            if (ok) rs(); else rj(new DOMException('Clipboard write was blocked', 'NotAllowedError'));
++          } catch (e) { rj(new DOMException('Clipboard write was blocked', 'NotAllowedError')); }
++        });
++      },
++      readText: function () { return Promise.reject(new DOMException('Read not permitted', 'NotAllowedError')); }
++    };
++    Object.defineProperty(navigator, 'clipboard', { get: function () { return zlClip; }, configurable: true });
++  } catch (e) {}
++
+   /* ── EventSource: SSE frames over the stream channel ── */
+   var OrigES = window.EventSource;
+   window.EventSource = function (u, cfg) {
+@@ -737,6 +806,7 @@
+     var es = new EventTarget();
+     var sid = ++rid;
+     var sse = { onchunk: null };
++  var esTd = new TextDecoder('utf-8');
+     var buf = '';
+     Object.defineProperty(es, 'url', { value: url });
+     Object.defineProperty(es, 'readyState', { get: function () { return es.__rs === undefined ? 0 : es.__rs; }, configurable: true });
+@@ -758,7 +828,7 @@
+         if (ev === 'message' && es.onmessage) try { es.onmessage(evt); } catch (e) {}
+       });
+     };
+-    streamHandlers.set(sid, { onstart: function (st) { es.__rs = 1; var e2 = new Event('open'); es.dispatchEvent(e2); if (es.onopen) try { es.onopen(e2); } catch (e) {} }, ondata: sse.onchunk, onend: function () {}, onerror: function () { es.__rs = 2; var e3 = new Event('error'); es.dispatchEvent(e3); if (es.onerror) try { es.onerror(e3); } catch (e) {} } });
++    streamHandlers.set(sid, { onstart: function (st) { es.__rs = 1; var e2 = new Event('open'); es.dispatchEvent(e2); if (es.onopen) try { es.onopen(e2); } catch (e) {} }, /* zlfix15 */ ondata: function (arr) { sse.onchunk(esTd.decode(arr, { stream: true })); }, onend: function () { try { var esFl = esTd.decode(); if (esFl) sse.onchunk(esFl); } catch (e9) {} }, onerror: function () { es.__rs = 2; var e3 = new Event('error'); es.dispatchEvent(e3); if (es.onerror) try { es.onerror(e3); } catch (e) {} } });
+     post({ t: 'str', i: sid, url: url, opts: { method: 'GET', headers: { Accept: 'text/event-stream' } } });
+     return es;
+   };
+@@ -4393,8 +4463,20 @@
      h.appendChild(el('div', 'font-size:13px;opacity:.7;margin-top:24px;', 'Relay: ' + (activeRelay || 'none') + ' · sites that block proxies or need login walls can fail here.'));
      var retry = el('a', 'display:inline-block;margin-top:28px;padding:12px 24px;border-radius:20px;background:#5bdac2;color:#00382e;font-weight:600;text-decoration:none;', 'Try again');
      retry.setAttribute('href', url);
@@ -22,7 +122,7 @@
    }
    function imagePage(tab, mime, b64, url) {
      var img = el('img', 'max-width:100%;max-height:96vh;display:block;margin:auto;');
-@@ -4922,6 +4934,12 @@
+@@ -4922,6 +5004,12 @@
            replyTo(source, { t: 'geoResp', f: d.f, i: d.i, ok: 0, code: 1, message: 'unavailable' });
          }
          break;
@@ -35,7 +135,7 @@
        case 'dl':
          tunnelDownload(d.u);
          break;
-@@ -5146,6 +5164,379 @@
+@@ -5146,6 +5234,379 @@
    }
    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
    else boot();

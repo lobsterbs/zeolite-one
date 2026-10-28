@@ -780,26 +780,31 @@
     };
   }
 
-  /* zlfix20: WebCrypto shim for frames without crypto.subtle (engine run from file: origin -> blob:null frames are non-secure contexts, which strips crypto.subtle and breaks WebCrypto-dependent sites like Brave /ask) */
+  /* zlfix21: WebCrypto shim v2 for frames without crypto.subtle (engine from file: origin -> blob:null frames are non-secure contexts): deterministic key round-trip, real SHA-256, supersedes the v1 shim */
   (function () {
     if (window.crypto && window.crypto.subtle) return;
     var realC = window.crypto;
     var grv = function (a) { if (realC && realC.getRandomValues) return realC.getRandomValues(a); for (var i = 0; i < a.length; i++) a[i] = (Math.random() * 256) | 0; return a; };
     var B64U = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     var HEXC = '0123456789abcdef';
-    var randK = function () { var b = new Uint8Array(48); grv(b); var o = ''; for (var i = 0; i < 43; i++) o += B64U[b[i] & 63]; return o; };
-    var mkKey = function (alg, ext, usages) { return { zlFake: true, type: 'secret', extractable: ext !== false, algorithm: alg || { name: 'AES-GCM', length: 256 }, usages: usages || [] }; };
+    var b64uFromBytes = function (b) { var o = ''; for (var i = 0; i < b.length; i += 3) { var b0 = b[i], b1 = i + 1 < b.length ? b[i + 1] : 0, b2 = i + 2 < b.length ? b[i + 2] : 0; o += B64U[b0 >> 2] + B64U[((b0 & 3) << 4) | (b1 >> 4)]; if (i + 1 < b.length) o += B64U[((b1 & 15) << 2) | (b2 >> 6)]; if (i + 2 < b.length) o += B64U[b2 & 63]; } return o; };
+    var b64uToBytes = function (str) { var rev = {}; for (var q = 0; q < 64; q++) rev[B64U.charAt(q)] = q; var out = []; var full = str.length - (str.length % 4); for (var i = 0; i < full; i += 4) { var n = (rev[str.charAt(i)] << 18) | (rev[str.charAt(i + 1)] << 12) | (rev[str.charAt(i + 2)] << 6) | rev[str.charAt(i + 3)]; out.push((n >> 16) & 255, (n >> 8) & 255, n & 255); } var rem = str.length - full; if (rem === 2) { var n2 = (rev[str.charAt(full)] << 18) | (rev[str.charAt(full + 1)] << 12); out.push((n2 >> 16) & 255); } else if (rem === 3) { var n3 = (rev[str.charAt(full)] << 18) | (rev[str.charAt(full + 1)] << 12) | (rev[str.charAt(full + 2)] << 6); out.push((n3 >> 16) & 255, (n3 >> 8) & 255); } return new Uint8Array(out); };
+    var randK = function () { var b = new Uint8Array(32); grv(b); return b64uFromBytes(b); };
+    var mkKey = function (k, alg, ext, usages) { return { zlFake: true, zlK: k, type: 'secret', extractable: ext !== false, algorithm: alg || { name: 'AES-GCM', length: 256 }, usages: usages || [] }; };
+    var rotr = function (x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; };
+    var K256 = '428a2f9871374491b5c0fbcfe9b5dba53956c25b59f111f1923f82a4ab1c5ed5d807aa9812835b01243185be550c7dc372be5d7480deb1fe9bdc06a7c19bf174e49b69c1efbe47860fc19dc6240ca1cc2de92c6f4a7484aa5cb0a9dc76f988da983e5152a831c66db00327c8bf597fc7c6e00bf3d5a7914706ca63511429296727b70a852e1b21384d2c6dfc53380d13650a7354766a0abb81c2c92e92722c85a2bfe8a1a81a664bc24b8b70c76c51a3d192e819d6990624f40e3585106aa07019a4c1161e376c082748774c34b0bcb5391c0cb34ed8aa4a5b9cca4f682e6ff3748f82ee78a5636f84c878148cc7020890befffaa4506cebbef9a3f7c67178f2';
+    var sha256 = function (bytes) { var K = []; for (var i0 = 0; i0 < 64; i0++) K[i0] = parseInt(K256.substr(i0 * 8, 8), 16); var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]; var l = bytes.length; var padded = []; for (var p = 0; p < l; p++) padded.push(bytes[p] & 255); padded.push(0x80); while (padded.length % 64 !== 56) padded.push(0); var lo = (l << 3) >>> 0; var hi = Math.floor(l / 536870912); padded.push((hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255, (lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255); var w = new Array(64); for (var off = 0; off < padded.length; off += 64) { for (var t = 0; t < 16; t++) { var j = off + t * 4; w[t] = (((padded[j] << 24) | (padded[j + 1] << 16) | (padded[j + 2] << 8) | padded[j + 3]) & 4294967295) >>> 0; } for (var t2 = 16; t2 < 64; t2++) { var x15 = w[t2 - 15]; var x2 = w[t2 - 2]; var s0 = (rotr(x15, 7) ^ rotr(x15, 18) ^ (x15 >>> 3)) >>> 0; var s1 = (rotr(x2, 17) ^ rotr(x2, 19) ^ (x2 >>> 10)) >>> 0; w[t2] = (w[t2 - 16] + s0 + w[t2 - 7] + s1) >>> 0; } var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7]; for (var t3 = 0; t3 < 64; t3++) { var S1 = (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) >>> 0; var ch = ((e & f) ^ (~e & g)) >>> 0; var t1 = (h + S1 + ch + K[t3] + w[t3]) >>> 0; var S0 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) >>> 0; var maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0; var t2b = (S0 + maj) >>> 0; h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2b) >>> 0; } H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0; H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0; } var out = new Uint8Array(32); for (var q2 = 0; q2 < 8; q2++) { out[q2 * 4] = (H[q2] >>> 24) & 255; out[q2 * 4 + 1] = (H[q2] >>> 16) & 255; out[q2 * 4 + 2] = (H[q2] >>> 8) & 255; out[q2 * 4 + 3] = H[q2] & 255; } return out; };
     var fakeSubtle = {
-      generateKey: function (alg, ext, usages) { return Promise.resolve(mkKey(alg, ext, usages)); },
-      exportKey: function (fmt, key) { if (fmt === 'jwk') return Promise.resolve({ kty: 'oct', k: randK(), alg: 'A256GCM', key_ops: ['encrypt', 'decrypt'], ext: true }); return Promise.resolve(new Uint8Array(32)); },
-      importKey: function (fmt, data, alg, ext, usages) { return Promise.resolve(mkKey(alg, ext, usages)); },
+      generateKey: function (alg, ext, usages) { return Promise.resolve(mkKey(randK(), alg, ext, usages)); },
+      exportKey: function (fmt, key) { var k = key && key.zlK ? key.zlK : randK(); if (fmt === 'jwk') return Promise.resolve({ kty: 'oct', k: k, alg: 'A256GCM', key_ops: ['encrypt', 'decrypt'], ext: true }); return Promise.resolve(b64uToBytes(k)); },
+      importKey: function (fmt, data, alg, ext, usages) { var k = null; try { if (fmt === 'jwk' && data && data.k) k = String(data.k); else if (fmt === 'raw') k = b64uFromBytes(data instanceof Uint8Array ? data : new Uint8Array(data.buffer || data)); } catch (e1) {} return Promise.resolve(mkKey(k || randK(), alg, ext, usages)); },
       encrypt: function () { return Promise.resolve(new ArrayBuffer(16)); },
       decrypt: function () { return Promise.resolve(new ArrayBuffer(0)); },
-      digest: function (alg) { var n = 32; if (alg && alg.name === 'SHA-512') n = 64; if (alg && alg.name === 'SHA-1') n = 20; var b = new Uint8Array(n); grv(b); return Promise.resolve(b.buffer); },
+      digest: function (alg, data) { var nm = typeof alg === 'string' ? alg : (alg && alg.name ? alg.name : 'SHA-256'); var input = arguments.length > 1 ? arguments[1] : null; try { var u = input instanceof Uint8Array ? input : (input && input.buffer ? new Uint8Array(input.buffer) : new Uint8Array(input)); if (nm === 'SHA-256') return Promise.resolve(sha256(u).buffer); } catch (e2) {} var n = nm === 'SHA-1' ? 20 : (nm === 'SHA-384' ? 48 : (nm === 'SHA-512' ? 64 : 32)); var b = new Uint8Array(n); grv(b); return Promise.resolve(b.buffer); },
       sign: function () { return Promise.resolve(new ArrayBuffer(64)); },
       verify: function () { return Promise.resolve(true); },
       deriveBits: function (alg, key, len) { var n = Math.ceil((len || 256) / 8); var b = new Uint8Array(n); grv(b); return Promise.resolve(b.buffer); },
-      deriveKey: function (alg, key, fmt, ext, usages) { return Promise.resolve(mkKey(fmt, ext, usages)); }
+      deriveKey: function (alg, key, fmt, ext, usages) { return Promise.resolve(mkKey(randK(), fmt, ext, usages)); }
     };
     var shim = { getRandomValues: grv, subtle: fakeSubtle, randomUUID: function () { var b = new Uint8Array(16); grv(b); var h = []; for (var i = 0; i < 16; i++) { h.push(HEXC[(b[i] >> 4) & 15]); h.push(HEXC[b[i] & 15]); } return h.slice(0, 8).join('') + '-' + h.slice(8, 12).join('') + '-4' + h.slice(13, 16).join('') + '-8' + h.slice(17, 20).join('') + '-' + h.slice(20, 32).join(''); } };
     try { Object.defineProperty(window, 'crypto', { value: shim, configurable: true, writable: true }); } catch (e) {}
@@ -5260,7 +5265,7 @@ window.ZMD3E_GZ='H4sIAAAAAAACA+y9e3/jNrIo+P/9FJJurg4gQzSpt6iGtd3Oq5N0OrHTk4dGx6E
       wasmOk = true;
     }
   }
-  var ZL_VERSION = 'zl-ship13';
+  var ZL_VERSION = 'zl-ship14';
   var ZL_VERURL = 'https://raw.githubusercontent.com/lobsterbs/zeolite-one/main/version.json';
   function zlKdlStr() {
     var Q = String.fromCharCode(34);

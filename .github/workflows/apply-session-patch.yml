@@ -18,9 +18,9 @@ jobs:
           patch -p0 --batch < patches/session.diff
           rm -f zeolite-base.html.orig zeolite-engine.html
           mv zeolite-base.html zeolite.html
-          echo "837860326a4da7c130576d2e0d5a386b  zeolite.html" | md5sum -c -
+          echo "2671a4edeab3d25cb74d7abe2885210d  zeolite.html" | md5sum -c -
           git config user.name "zl-bot"
           git config user.email "bot@users.noreply.github.com"
           git add zeolite.html
-          git commit -m "engine: webcrypto shim v2 deterministic keys zlfix21, ship14"
+          git commit -m "engine: remove newtab tagline, ship15"
           git push

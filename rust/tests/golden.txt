@@ -1,0 +1,211 @@
+=====IN
+x(location);
+-----OUT
+x(__zlSafe(window).__zlLoc$);
+=====IN
+a = w.location;
+-----OUT
+a = __zlSafe(w.location).__zlLoc$;
+=====IN
+var a = location;
+-----OUT
+var a = __zlSafe(window).__zlLoc$;
+=====IN
+var l = location.href;
+-----OUT
+var l = __zlSafe(window).__zlLoc$.href;
+=====IN
+location.assign("x");
+-----OUT
+__zlSafe(window).__zlLoc$.assign("x");
+=====IN
+location.reload();
+-----OUT
+__zlSafe(window).__zlLoc$.reload();
+=====IN
+obj.location = 1;
+-----OUT
+obj.location = 1;
+=====IN
+window.location = "/x";
+-----OUT
+__zlSafe(window.location).__zlLoc$ = "/x";
+=====IN
+self.location = 1;
+-----OUT
+__zlSafe(self.location).__zlLoc$ = 1;
+=====IN
+this.location = 2;
+-----OUT
+this.location = 2;
+=====IN
+return location;
+-----OUT
+return __zlSafe(window).__zlLoc$;
+=====IN
+f(location, 1);
+-----OUT
+f(__zlSafe(window).__zlLoc$, 1);
+=====IN
+new URL(location);
+-----OUT
+new URL(__zlSafe(window).__zlLoc$);
+=====IN
+function f(location){ return location; }
+-----OUT
+function f(location){ return location; }
+=====IN
+var location = 1; x(location);
+-----OUT
+var location = 1; x(location);
+=====IN
+const {location} = w; x(location);
+-----OUT
+const {location} = w; x(location);
+=====IN
+const {a: location} = w;
+-----OUT
+const {a: location} = w;
+=====IN
+function g({location}){ return 1 }
+-----OUT
+function g({location}){ return 1 }
+=====IN
+const h = ({location}) => location;
+-----OUT
+const h = ({location}) => location;
+=====IN
+const k = (location) => 1;
+-----OUT
+const k = (location) => 1;
+=====IN
+class location {}
+-----OUT
+class location {}
+=====IN
+try {} catch (location) { x(location); }
+-----OUT
+try {} catch (location) { x(location); }
+=====IN
+function location(){}
+-----OUT
+function location(){}
+=====IN
+const z = function location(){};
+-----OUT
+const z = function location(){};
+=====IN
+if (location) { x(); }
+-----OUT
+if (location) { x(); }
+=====IN
+typeof location
+-----OUT
+typeof location
+=====IN
+x = location + "";
+-----OUT
+x = location + "";
+=====IN
+x = a.b.location.href;
+-----OUT
+x = __zlSafe(a.b.location).__zlLoc$.href;
+=====IN
+x = a.location.location;
+-----OUT
+x = __zlSafe(a.location).__zlLoc$.location;
+=====IN
+x = a?.location;
+-----OUT
+x = __zlSafe(a?.location).__zlLoc$;
+=====IN
+x = location.toString();
+-----OUT
+x = __zlSafe(window).__zlLoc$.toString();
+=====IN
+x = location.pathname;
+-----OUT
+x = __zlSafe(window).__zlLoc$.pathname;
+=====IN
+x = location.foo;
+-----OUT
+x = location.foo;
+=====IN
+x = super_.location;
+-----OUT
+x = __zlSafe(super_.location).__zlLoc$;
+=====IN
+x = import("y").location;
+-----OUT
+x = import("y").location;
+=====IN
+x = w["location"];
+-----OUT
+x = w["location"];
+=====IN
+obj.location = location;
+-----OUT
+obj.location = __zlSafe(window).__zlLoc$;
+=====IN
+x = [location];
+-----OUT
+x = [location];
+=====IN
+x = {k: location};
+-----OUT
+x = {k: location};
+=====IN
+x = a.location.href = 3;
+-----OUT
+x = __zlSafe(a.location).__zlLoc$.href = 3;
+=====IN
+function q(...location){}
+-----OUT
+function q(...location){}
+=====IN
+function r(a, location = 1){}
+-----OUT
+function r(a, location = 1){}
+=====IN
+var [location] = arr;
+-----OUT
+var [location] = arr;
+=====IN
+x = top.location.href; y = window.location;
+-----OUT
+x = __zlSafe(top.location).__zlLoc$.href; y = __zlSafe(window.location).__zlLoc$;
+=====IN
+location.href = "/a";
+-----OUT
+__zlSafe(window).__zlLoc$.href = "/a";
+=====IN
+a(location.href, location);
+-----OUT
+a(__zlSafe(window).__zlLoc$.href, __zlSafe(window).__zlLoc$);
+=====IN
+return;
+-----OUT
+return;
+=====IN
+var q = 1;
+-----OUT
+var q = 1;
+=====IN
+x = `${location}`;
+-----OUT
+x = `${location}`;
+=====IN
+x = location
+.href;
+-----OUT
+x = __zlSafe(window).__zlLoc$
+.href;
+=====IN
+let x = 1; x = document.location;
+-----OUT
+let x = 1; x = __zlSafe(document.location).__zlLoc$;
+=====IN
+x = frames.location;
+-----OUT
+x = __zlSafe(frames.location).__zlLoc$;
+=====END

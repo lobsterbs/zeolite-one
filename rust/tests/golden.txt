@@ -195,6 +195,34 @@ x = `${location}`;
 -----OUT
 x = `${location}`;
 =====IN
+import a from "b"; x(location);
+-----OUT
+import a from "b"; x(__zlSafe(window).__zlLoc$);
+=====IN
+export const q = location;
+-----OUT
+export const q = __zlSafe(window).__zlLoc$;
+=====IN
+await f(); y(location);
+-----OUT
+await f(); y(__zlSafe(window).__zlLoc$);
+=====IN
+x = ;
+-----OUT
+x = ;
+=====IN
+x = location; y = ;
+-----OUT
+x = location; y = ;
+=====IN
+let s = "é"; x(location);
+-----OUT
+let s = "é"; x(__zlSafe(window).__zlLoc$);
+=====IN
+x = `${location.href}`;
+-----OUT
+x = `${__zlSafe(window).__zlLoc$.href}`;
+=====IN
 x = location
 .href;
 -----OUT

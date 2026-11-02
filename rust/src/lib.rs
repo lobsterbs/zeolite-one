@@ -183,14 +183,24 @@ pub fn rewrite_location(src: &str) -> String {
     if src.is_empty() || !src.contains("location") || src.len() > 4_000_000 {
         return src.to_string();
     }
+    /* mirror acorn: script first, then module; any syntax error on both means "leave it alone" */
     let alloc = Allocator::default();
     let opts = ParseOptions { preserve_parens: false, ..ParseOptions::default() };
-    let parsed = Parser::new(&alloc, src, SourceType::cjs()).with_options(opts).parse();
-    if parsed.program.body.is_empty() && !src.trim().is_empty() {
-        return src.to_string();
+    let mut parsed = Parser::new(&alloc, src, SourceType::cjs()).with_options(opts).parse();
+    if !parsed.diagnostics.is_empty() {
+        let alloc2 = Allocator::default();
+        parsed = Parser::new(&alloc2, src, SourceType::mjs()).with_options(opts).parse();
+        if !parsed.diagnostics.is_empty() {
+            return src.to_string();
+        }
+        return rewrite_program(src, &parsed.program);
     }
+    rewrite_program(src, &parsed.program)
+}
+
+fn rewrite_program(src: &str, program: &Program) -> String {
     let mut rw = Rw::default();
-    rw.visit_program(&parsed.program);
+    rw.visit_program(program);
     if rw.shadow {
         return src.to_string();
     }
@@ -219,6 +229,36 @@ pub fn rewrite_location(src: &str) -> String {
         out.replace_range(s..e, &rep);
     }
     out
+}
+
+/* ---- wasm ABI: no imports, no wasm-bindgen. JS writes UTF-8 into zl_alloc'd memory, calls
+   zl_rewrite, reads the packed (ptr << 32 | len) result, then frees both buffers. ---- */
+#[no_mangle]
+pub extern "C" fn zl_alloc(len: usize) -> *mut u8 {
+    let mut v: Vec<u8> = Vec::with_capacity(len.max(1));
+    let p = v.as_mut_ptr();
+    std::mem::forget(v);
+    p
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn zl_free(ptr: *mut u8, len: usize) {
+    if !ptr.is_null() {
+        drop(Vec::from_raw_parts(ptr, 0, len.max(1)));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn zl_rewrite(ptr: *const u8, len: usize) -> u64 {
+    let bytes = std::slice::from_raw_parts(ptr, len);
+    let src = match std::str::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    let out = rewrite_location(src).into_bytes().into_boxed_slice();
+    let olen = out.len();
+    let optr = Box::into_raw(out) as *mut u8;
+    ((optr as u64) << 32) | (olen as u64)
 }
 
 #[no_mangle]
